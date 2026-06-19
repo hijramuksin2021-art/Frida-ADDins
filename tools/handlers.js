@@ -525,6 +525,63 @@
     return { cellsEdited, rowsAdded, rowsDeleted };
   }
 
+  // ---- Tool: format_table (write; ubah tampilan tabel yang sudah ada) ----
+  // Pakai Table.getBorder(BorderLocation) — API resmi, tak perlu membuat ulang tabel.
+  async function format_table(context, args) {
+    const tables = context.document.body.tables;
+    tables.load("items");
+    await context.sync();
+    const idx = args.tableIndex || 0;
+    const table = tables.items[idx];
+    if (!table) return { error: "tabel indeks " + idx + " tidak ada" };
+
+    const type = args.borderStyle || "Single";
+    const width = args.borderWidth || 1;
+    const color = args.borderColor || "#000000";
+
+    // peta pilihan -> lokasi border yg perlu di-set
+    const LOC = Word.BorderLocation;
+    const setMap = {
+      all: ["top", "bottom", "left", "right", "insideHorizontal", "insideVertical"],
+      outside: ["top", "bottom", "left", "right"],
+      inside: ["insideHorizontal", "insideVertical"],
+      none: ["top", "bottom", "left", "right", "insideHorizontal", "insideVertical"],
+    };
+
+    let bordersApplied = null;
+    if (args.borders) {
+      const locs = setMap[args.borders] || setMap.all;
+      locs.forEach((name) => {
+        const loc = LOC[name];
+        if (loc === undefined) return;
+        try {
+          const b = table.getBorder(loc);
+          if (args.borders === "none") {
+            b.type = Word.BorderType.none;
+          } else {
+            b.type = Word.BorderType[lc(type)] || Word.BorderType.single;
+            b.width = width;
+            b.color = color;
+          }
+        } catch (e) { /* lokasi tak didukung host: lewati */ }
+      });
+      bordersApplied = args.borders;
+    }
+
+    if (args.style) {
+      try { table.style = args.style; } catch (e) { /* style tak ada: abaikan */ }
+    }
+    if (args.headerBold) {
+      try { table.getRow(0).font.bold = true; } catch (e) { /* abaikan */ }
+    }
+
+    await context.sync();
+    return { ok: true, tableIndex: idx, borders: bordersApplied,
+             style: args.style || null };
+  }
+  // huruf pertama kecil (enum BorderType: single/double/dotted/dashed/thick)
+  function lc(s) { return String(s || "").charAt(0).toLowerCase() + String(s || "").slice(1); }
+
   // --- util OOXML untuk field TOC ---
   function tocOoxml() {
     const instr = 'TOC \\\\o "1-3" \\\\h \\\\z \\\\u';
@@ -558,6 +615,7 @@
     manage_comments,
     set_track_changes,
     edit_table,
+    format_table,
   };
 
   // ---- Pemetaan nama tool yang andal ----

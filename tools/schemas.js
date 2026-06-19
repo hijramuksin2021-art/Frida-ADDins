@@ -397,12 +397,42 @@
     },
   };
 
+  const format_table = {
+    name: "format_table",
+    description:
+      "Ubah TAMPILAN tabel yang SUDAH ADA tanpa membuat ulang: terapkan garis/border (mis. garis " +
+      "penuh/grid ke semua sel), ubah style tabel, dan/atau tebalkan baris header. " +
+      "Gunakan untuk 'buat tabelnya bergaris penuh', 'beri garis di semua sel', 'kasih grid ke tabel'. " +
+      "Pilih tabel via tableIndex (0 = tabel pertama).",
+    input_schema: {
+      type: "object",
+      properties: {
+        tableIndex: { type: "integer", default: 0, description: "Indeks tabel di dokumen (0 = pertama)." },
+        borders: {
+          type: "string",
+          enum: ["all", "outside", "inside", "none"],
+          description: "all = garis penuh di semua sel (grid); outside = tepi luar saja; inside = garis dalam saja; none = hapus semua garis.",
+        },
+        borderStyle: {
+          type: "string",
+          enum: ["Single", "Double", "Dotted", "Dashed", "Thick"],
+          default: "Single",
+          description: "Jenis garis.",
+        },
+        borderWidth: { type: "number", default: 1, description: "Tebal garis (pt)." },
+        borderColor: { type: "string", description: "Warna garis hex #RRGGBB (default hitam)." },
+        style: { type: "string", description: "Nama style tabel bawaan, mis. 'Grid Table 4 - Accent 1'." },
+        headerBold: { type: "boolean", description: "Tebalkan baris pertama sebagai header." },
+      },
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
     set_page_layout, format_paragraph, apply_style, insert_break,
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
-    insert_toc, manage_comments, set_track_changes, edit_table,
+    insert_toc, manage_comments, set_track_changes, edit_table, format_table,
   ];
 
   return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS) };
