@@ -235,6 +235,41 @@
     return { inserted: n, breakType: args.breakType || "page" };
   }
 
+  // ---- Tool: insert_paragraph (write; sisip teks baru) ----
+  async function insert_paragraph(context, args) {
+    const text = (args.text || "").trim();
+    if (!text) return { error: "text kosong" };
+    const parts = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    if (!parts.length) return { error: "text kosong" };
+    const loc = args.location || "end";
+    const body = context.document.body;
+    const applyStyle = (p) => { if (args.style) { try { p.style = args.style; } catch (e) {} } };
+    let inserted = 0;
+
+    if (loc === "end" || loc === "start") {
+      const where = loc === "end" ? Word.InsertLocation.end : Word.InsertLocation.start;
+      const seq = loc === "start" ? parts.slice().reverse() : parts; // start: balik agar urutan benar
+      seq.forEach((t) => { applyStyle(body.insertParagraph(t, where)); inserted++; });
+    } else if (loc === "after_selection") {
+      let anchor = context.document.getSelection();
+      parts.forEach((t) => { anchor = anchor.insertParagraph(t, Word.InsertLocation.after); applyStyle(anchor); inserted++; });
+    } else if (loc === "after_index" || loc === "before_index") {
+      const ps = body.paragraphs; ps.load("items"); await context.sync();
+      const target = ps.items[args.index];
+      if (!target) return { error: "indeks paragraf " + args.index + " tak ada" };
+      if (loc === "after_index") {
+        let anchor = target;
+        parts.forEach((t) => { anchor = anchor.insertParagraph(t, Word.InsertLocation.after); applyStyle(anchor); inserted++; });
+      } else {
+        parts.forEach((t) => { applyStyle(target.insertParagraph(t, Word.InsertLocation.before)); inserted++; });
+      }
+    } else {
+      return { error: "location tidak dikenal: " + loc };
+    }
+    await context.sync();
+    return { inserted, location: loc };
+  }
+
   // ---- Tool: set_page_layout (write, via OOXML sectPr) ----
   // Office.js JS API tidak mengekspos pageSetup, jadi kita ubah sectPr di OOXML
   // (pgSz utk ukuran/orientasi, pgMar utk margin). Satuan OOXML = twips (1cm=567twip).
@@ -673,6 +708,7 @@
     format_paragraph,
     apply_style,
     insert_break,
+    insert_paragraph,
     create_table,
     format_list,
     manage_header_footer,
@@ -736,6 +772,14 @@
           const ranges = await resolveTarget(context, input.target || { mode: "selection" });
           const what = describeWrite(name, input);
           return ranges.length + " bagian" + (what ? " — " + what : "");
+        }
+        case "insert_paragraph": {
+          const n = String(input.text || "").split(/\n+/).filter((s) => s.trim()).length;
+          const loc = input.location || "end";
+          const where = loc === "after_index" || loc === "before_index"
+            ? loc.replace("_", " #" + input.index) : loc;
+          return "sisip " + n + " paragraf di " + where +
+            " — \"" + String(input.text || "").slice(0, 50) + "…\"";
         }
         case "set_page_layout": {
           const parts = [];

@@ -187,6 +187,29 @@
     }, ["target", "styleName"]),
   };
 
+  const insert_paragraph = {
+    name: "insert_paragraph",
+    description:
+      "Sisipkan paragraf/teks BARU ke dokumen. Gunakan untuk 'tambahkan paragraf', 'tulis di halaman X', " +
+      "'lanjutkan dengan paragraf tentang ...'. JANGAN pakai replace_text untuk menambah teks baru. " +
+      "Beberapa paragraf bisa dipisah dengan baris baru (\\n).",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Isi paragraf (wajib). Pisahkan antar-paragraf dengan \\n." },
+        location: {
+          type: "string",
+          enum: ["end", "start", "after_index", "before_index", "after_selection"],
+          default: "end",
+          description: "end=akhir dokumen; start=awal; after_index/before_index=relatif paragraf 'index' (lihat get_document_outline); after_selection=setelah blok aktif.",
+        },
+        index: { type: "integer", description: "Indeks paragraf acuan (untuk after_index/before_index)." },
+        style: { type: "string", description: "Style paragraf opsional, mis. 'Normal','Quote'." },
+      },
+      required: ["text"],
+    },
+  };
+
   const insert_break = {
     name: "insert_break",
     description:
@@ -493,7 +516,7 @@
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
-    set_page_layout, format_paragraph, apply_style, insert_break,
+    set_page_layout, format_paragraph, apply_style, insert_break, insert_paragraph,
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
     insert_cover_page, format_business_proposal,

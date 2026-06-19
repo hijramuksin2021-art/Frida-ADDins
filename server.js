@@ -236,6 +236,7 @@ const AGENT_SYSTEM_PROMPT = [
   "- 'tulis teks di header/footer' -> manage_header_footer.",
   "- 'buat tabel bergaris penuh/grid', 'beri garis di semua sel', 'ubah border tabel' (tabel SUDAH ADA) -> format_table dengan borders='all'. JANGAN pakai create_table untuk mengubah tabel yang sudah ada.",
   "- 'buat tabel baru' atau 'ubah teks jadi tabel' -> create_table.",
+  "- MENAMBAH/MENYISIPKAN paragraf atau teks baru ('tambahkan paragraf', 'tulis di halaman/paragraf X', 'isi halaman kosong') -> insert_paragraph (location end/after_index/before_index/after_selection). DILARANG memakai replace_text dengan find kosong untuk menambah teks — itu error.",
   "- 'buatkan cover/halaman judul/halaman sampul' -> insert_cover_page (1 panggilan, isi judul/penulis/tanggal dari konteks).",
   "- 'format jadi proposal bisnis', 'rapikan jadi dokumen profesional' -> format_business_proposal (1 panggilan, jangan urai jadi banyak tool kecil).",
   "- Pertanyaan yang merujuk dokumen/jurnal yang DIUNGGAH ('berdasarkan jurnal X', 'menurut paper terunggah', 'cari di sumber', 'ringkas jurnal ini') -> panggil search_uploaded_sources DULU untuk mengambil kutipan, lalu jawab/menulis HANYA berdasarkan kutipan yang dikembalikan (sertakan source_id). JANGAN mengarang isi atau referensi.",
