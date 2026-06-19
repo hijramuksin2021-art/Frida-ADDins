@@ -42,9 +42,18 @@
     srcStatus("Mengindeks sumber (embedding)… pertama kali bisa lama (unduh model).");
     try {
       const r = await (await fetch("/api/sources/reindex", { method: "POST" })).json();
-      const done = (r.result || []).filter((x) => x.numChunks != null);
+      const rows = r.result || [];
+      const done = rows.filter((x) => x.numChunks != null);
+      const skipped = rows.filter((x) => x.skipped);
+      const errs = rows.filter((x) => x.error);
       const totChunks = done.reduce((a, x) => a + (x.numChunks || 0), 0);
-      srcStatus("Indeks selesai: " + done.length + " dok, " + totChunks + " chunk.", "ok");
+      let msg;
+      if (!rows.length) msg = "Belum ada sumber untuk diindeks.";
+      else if (done.length) msg = "Terindeks: " + done.length + " dok baru (" + totChunks + " chunk)" +
+        (skipped.length ? ", " + skipped.length + " sudah ada" : "") + ".";
+      else msg = "Semua " + skipped.length + " sumber sudah terindeks ✓ — siap dicari.";
+      if (errs.length) msg += " " + errs.length + " gagal.";
+      srcStatus(msg, errs.length ? "err" : "ok");
     } catch (err) {
       srcStatus("Gagal indeks: " + (err.message || err), "err");
     } finally {
