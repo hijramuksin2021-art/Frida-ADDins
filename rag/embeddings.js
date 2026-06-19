@@ -5,15 +5,38 @@
 //
 // Dipakai mulai R1 (chunk → embed). Di R0 hanya disediakan + bisa dites koneksinya.
 
+// Model lokal multilingual (ID+EN) — terbukti cross-lingual baik, 384-dim.
+const LOCAL_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+const LOCAL_DIM = 384;
+
 function readConfig(env) {
   env = env || process.env;
+  // Default LOCAL: provider chat (aerolink) tidak menyediakan model embeddings,
+  // jadi default ke lokal (tanpa key). Set EMBED_BASE_URL utk pakai provider remote.
   return {
     provider: env.EMBED_PROVIDER || (env.EMBED_BASE_URL ? "openai" : "local"),
     baseUrl: (env.EMBED_BASE_URL || "").replace(/\/+$/, ""),
     apiKey: env.EMBED_API_KEY || "",
-    model: env.EMBED_MODEL || "text-embedding-3-large",
-    dim: Number(env.EMBED_DIM || 0) || null,
+    model: env.EMBED_MODEL || LOCAL_MODEL,
+    dim: Number(env.EMBED_DIM || 0) || (env.EMBED_BASE_URL ? null : LOCAL_DIM),
   };
+}
+
+// ---- Embeddings LOKAL via @xenova/transformers (singleton, ESM dynamic import) ----
+let _extractorPromise = null;
+function getExtractor() {
+  if (!_extractorPromise) {
+    _extractorPromise = (async () => {
+      const { pipeline } = await import("@xenova/transformers");
+      return pipeline("feature-extraction", LOCAL_MODEL);
+    })();
+  }
+  return _extractorPromise;
+}
+async function embedLocal(texts) {
+  const extractor = await getExtractor();
+  const out = await extractor(texts, { pooling: "mean", normalize: true });
+  return out.tolist(); // number[][], sudah ternormalisasi -> cosine = dot product
 }
 
 // Status untuk UI/diagnostik (tanpa membocorkan key).
@@ -32,11 +55,10 @@ function status(env) {
 async function embed(texts, env) {
   const c = readConfig(env);
   const input = Array.isArray(texts) ? texts : [texts];
+  if (!input.length) return [];
 
   if (c.provider === "local") {
-    // Implementasi lokal (@xenova/transformers) ditambahkan di R1.
-    throw new Error("Embeddings lokal belum aktif (akan ditambahkan di R1). " +
-      "Untuk sekarang set EMBED_BASE_URL + EMBED_API_KEY + EMBED_MODEL di .env.");
+    return embedLocal(input);
   }
 
   if (!c.baseUrl || !c.apiKey) {
@@ -62,4 +84,6 @@ async function embed(texts, env) {
   return vecs;
 }
 
-module.exports = { readConfig, status, embed };
+function dim(env) { return readConfig(env).dim; }
+
+module.exports = { readConfig, status, embed, dim, LOCAL_MODEL, LOCAL_DIM };

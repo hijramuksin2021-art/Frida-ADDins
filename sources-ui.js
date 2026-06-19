@@ -19,8 +19,38 @@
       dropZone.addEventListener("drop", (e) => uploadFiles(e.dataTransfer.files));
       dropZone.addEventListener("click", () => fileInput.click());
     }
+    const reBtn = document.getElementById("srcReindex");
+    if (reBtn) reBtn.addEventListener("click", reindex);
     refreshList();
+    showEmbedStatus();
   });
+
+  async function showEmbedStatus() {
+    const el = document.getElementById("srcEmbed");
+    if (!el) return;
+    try {
+      const s = await (await fetch("/api/sources/embed-status")).json();
+      el.textContent = "embeddings: " + s.provider +
+        (s.provider === "local" ? " (lokal, multilingual)" : "") +
+        (s.configured ? "" : " — belum dikonfigurasi");
+    } catch (_) {}
+  }
+
+  async function reindex() {
+    const btn = document.getElementById("srcReindex");
+    if (btn) btn.disabled = true;
+    srcStatus("Mengindeks sumber (embedding)… pertama kali bisa lama (unduh model).");
+    try {
+      const r = await (await fetch("/api/sources/reindex", { method: "POST" })).json();
+      const done = (r.result || []).filter((x) => x.numChunks != null);
+      const totChunks = done.reduce((a, x) => a + (x.numChunks || 0), 0);
+      srcStatus("Indeks selesai: " + done.length + " dok, " + totChunks + " chunk.", "ok");
+    } catch (err) {
+      srcStatus("Gagal indeks: " + (err.message || err), "err");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
 
   function srcStatus(msg, cls) {
     const el = document.getElementById("srcStatus");

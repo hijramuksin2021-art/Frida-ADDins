@@ -19,6 +19,7 @@ const { SCHEMAS: TOOL_SCHEMAS } = require("./tools/schemas");
 const ingest = require("./rag/ingest");
 const sourceStore = require("./rag/store");
 const embeddings = require("./rag/embeddings");
+const vectors = require("./rag/vectors");
 
 // ---- konfigurasi: env DULU, lalu config.json sbg fallback (nilai non-rahasia) ----
 // API key TIDAK boleh disimpan di config.json yang ter-commit. Taruh di .env / env OS.
@@ -330,9 +331,31 @@ async function handleSources(req, res) {
     if (req.method === "GET" && url === "/api/sources/embed-status") {
       return sendJson(res, 200, embeddings.status());
     }
+    // POST /api/sources/reindex -> embed dokumen yg belum ber-vektor
+    if (req.method === "POST" && url === "/api/sources/reindex") {
+      const result = await ingest.reindexAll();
+      return sendJson(res, 200, { result });
+    }
+    // POST /api/sources/search  { query, k, document_ids, workspace }
+    if (req.method === "POST" && url === "/api/sources/search") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      if (!body.query) return sendJson(res, 400, { error: "query wajib diisi" });
+      const docs = (body.document_ids && body.document_ids.length)
+        ? body.document_ids
+        : sourceStore.list(body.workspace).map((d) => d.id);
+      const [qvec] = await embeddings.embed([body.query]);
+      const hits = vectors.search(qvec, docs, { k: body.k || 8, minScore: body.minScore });
+      // sertakan judul sumber utk konteks
+      const titles = {};
+      sourceStore.list().forEach((d) => (titles[d.id] = d.title));
+      return sendJson(res, 200, {
+        hits: hits.map((h) => ({ ...h, title: titles[h.document_id] || null })),
+      });
+    }
     // DELETE /api/sources/:id
     if (req.method === "DELETE" && /^\/api\/sources\/[\w-]+$/.test(url)) {
       const id = url.split("/").pop();
+      vectors.removeChunks(id);
       return sendJson(res, 200, { removed: sourceStore.remove(id) });
     }
     return sendJson(res, 404, { error: "rute sumber tidak dikenal" });

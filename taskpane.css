@@ -112,3 +112,6 @@ button:disabled { opacity: .6; cursor: default; }
 .src-warn { font-size: 10px; color: #92400e; background: #fef3c7; border-radius: 4px; padding: 0 4px; font-weight: 400; }
 .src-del { width: auto; margin: 0; padding: 2px 7px; font-size: 12px; border-radius: 4px; background: #fff; color: #b91c1c; border-color: #f0d0d0; }
 .src-del:hover { background: #fef2f2; }
+.src-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.src-reindex { width: auto; margin: 0; padding: 4px 10px; font-size: 12px; }
+.src-embed { font-size: 11px; color: #888; }
