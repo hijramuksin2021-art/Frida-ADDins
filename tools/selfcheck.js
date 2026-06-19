@@ -7,7 +7,7 @@
 // Exit code != 0 bila ada pelanggaran (cocok untuk CI / pre-commit nanti).
 
 const { SCHEMAS } = require("./schemas");
-const { HANDLERS, resolveTarget, resolveHandler } = require("./handlers");
+const { HANDLERS, resolveTarget, resolveHandler, previewTool } = require("./handlers");
 const { riskScore, needsConfirm, Permissions, makeAuditLog } = require("./safety");
 
 const problems = [];
@@ -37,8 +37,9 @@ for (const n of handlerNames) {
   check(schemaNames.includes(n), `handler '${n}' TIDAK punya schema`, `schema ada untuk '${n}'`);
 }
 
-// 4) resolveTarget tersedia
+// 4) resolveTarget + previewTool tersedia
 check(typeof resolveTarget === "function", "resolveTarget hilang dari handlers");
+check(typeof previewTool === "function", "previewTool hilang dari handlers (Fase 5)");
 
 // 5) resolveHandler tahan nama yang di-rename provider (regresi Fase 2)
 check(typeof resolveHandler === "function", "resolveHandler hilang dari handlers");

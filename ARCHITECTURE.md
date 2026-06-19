@@ -528,7 +528,7 @@ async function insert_cover_page(context, a) {
 | **2 — Agentic loop** | ✅ SELESAI | `/api/agent` relay multi-turn; loop `tool_use`↔`tool_result` di klien; dispatcher via `resolveHandler`; chat UI; read auto / write konfirmasi | `server.js`, `taskpane.*`, `tools/handlers.js` |
 | **3 — Safety core** | ✅ SELESAI | `tools/safety.js`: TransactionManager (snapshot OOXML) + rollback, Undo FRIDA, permission gate per-tool, `riskScore`/`needsConfirm`, AuditLog + panel | `tools/safety.js`, `taskpane.*` |
 | **4 — Tool breadth** | ✅ SELESAI | **17 tool**. b1: set_page_layout, format_paragraph, apply_style, insert_break. b2: create_table, format_list, manage_header_footer, set_page_numbers, insert_image. b3: insert_toc, manage_comments, set_track_changes, edit_table. +format_table (border tabel) | `tools/` |
-| **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
+| **5 — Preview/diff** | ✅ SELESAI | `previewTool` (estimasi dampak read-only) + toggle "Tinjau dampak"; kartu konfirmasi menampilkan dampak nyata sebelum eksekusi | `tools/handlers.js`, `taskpane.*` |
 | **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
 | **7 — Enterprise** | ⬜ | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
 
@@ -644,6 +644,19 @@ Registry 7 → **12 tool**.
 - **Verifikasi:** parity 12/12 (selfcheck **72 cek lulus**); agent call NYATA: "tambahkan nomor
   halaman" → `set_page_numbers`; "ubah teks seleksi jadi tabel" → `create_table {fromSelection:true}`.
   Eksekusi di dokumen nyata perlu dites saat sideload.
+
+### Catatan Fase 5 — Preview/diff
+Sebelum eksekusi, tampilkan **dampak nyata** (bukan sekadar nama tool).
+- **`previewTool(context, name, input)`** (handlers.js) — estimasi **READ-ONLY** (tak mengubah
+  dokumen): `replace_text`→jumlah kemunculan; `format_text`/`apply_style`/dll→jumlah bagian
+  terkena (resolveTarget); `set_page_layout`/`set_page_numbers`/`create_table`/`format_table`/
+  `edit_table`→deskripsi spesifik. Dibungkus try/catch → "(pratinjau tak tersedia)".
+- **`computePreviews`** (taskpane.js) — jalankan semua preview dalam SATU `Word.run` read-only.
+- **Toggle "Tinjau dampak sebelum menerapkan"** (default ON). Saat ON, SEMUA write ditinjau dulu;
+  saat OFF, hanya aksi berisiko (perilaku Fase 3). Kartu konfirmasi menampilkan baris hijau
+  "↳ <dampak>" per tool.
+- **Verifikasi:** parity 17/17, selfcheck **101 cek lulus**; boot menyajikan file. Estimasi nyata
+  (mis. hitung match) butuh Word saat sideload.
 
 ### Catatan Fase 4 — format_table (border tabel yang sudah ada)
 FRIDA dulu menolak "buat tabelnya bergaris penuh" karena `create_table` hanya bisa memberi style

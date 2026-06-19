@@ -131,11 +131,16 @@ async function runAgentLoop() {
       return;
     }
 
-    // Konfirmasi berbasis RISIKO (bukan semua write). Read & write aman -> jalan otomatis.
+    // Konfirmasi berbasis RISIKO + mode Pratinjau.
     const risky = toolUses.filter((t) => needsConfirm({ name: canonName(t.name), input: t.input }));
     const hasWrite = toolUses.some((t) => !isReadTool(t.name));
-    if (risky.length) {
-      const okGo = await confirmBatch(toolUses, risky);
+    // Tinjau dulu bila: ada aksi berisiko, ATAU mode pratinjau aktif & ada write.
+    const mustConfirm = risky.length > 0 || (previewMode() && hasWrite);
+    if (mustConfirm) {
+      // Hitung pratinjau dampak (READ-ONLY) sebelum menampilkan konfirmasi.
+      setStatus("FRIDA menyiapkan pratinjau…");
+      const previews = await computePreviews(toolUses);
+      const okGo = await confirmBatch(toolUses, risky, previews);
       if (!okGo) {
         messages.push({ role: "user", content: toolUses.map((t) => ({
           type: "tool_result", tool_use_id: t.id, is_error: true,
@@ -224,9 +229,29 @@ function officeErr(e) {
   return s;
 }
 
+// ---------- pratinjau (Fase 5) ----------
+function previewMode() {
+  const c = document.getElementById("previewToggle");
+  return c ? c.checked : true; // default: tinjau dulu
+}
+
+// Hitung dampak READ-ONLY tiap tool dalam SATU Word.run (tanpa mengubah dokumen).
+async function computePreviews(toolUses) {
+  const { previewTool } = window.FRIDA_HANDLERS;
+  const out = {};
+  try {
+    await Word.run(async (context) => {
+      for (const tu of toolUses) {
+        out[tu.id] = await previewTool(context, tu.name, tu.input);
+      }
+    });
+  } catch (e) { /* pratinjau gagal: biarkan kosong, tetap bisa konfirmasi */ }
+  return out;
+}
+
 // ---------- konfirmasi & undo & audit ----------
-function confirmBatch(toolUses, risky) {
-  renderToolCalls(toolUses, "menunggu konfirmasi…");
+function confirmBatch(toolUses, risky, previews) {
+  renderToolCalls(toolUses, "menunggu konfirmasi…", previews);
   const riskNames = (risky || []).map((t) => canonName(t.name));
   return new Promise((resolve) => {
     const wrap = document.createElement("div");
@@ -287,14 +312,16 @@ function renderAudit() {
       "</div>").join("");
 }
 
-function renderToolCalls(toolUses, note) {
+function renderToolCalls(toolUses, note, previews) {
   toolUses.forEach((tu) => {
     const card = document.createElement("div");
     card.className = "tool";
     card.id = "tool-" + tu.id;
     const isRead = isReadTool(tu.name);
+    const pv = previews && previews[tu.id];
     card.innerHTML =
       '<div class="tag">' + (isRead ? "🔍 " : "✏️ ") + escapeHtml(canonName(tu.name)) + "</div>" +
+      (pv ? '<div class="preview">↳ ' + escapeHtml(pv) + "</div>" : "") +
       '<div class="args">' + escapeHtml(summarizeArgs(tu.input)) + "</div>" +
       '<div class="tnote">' + escapeHtml(note || "") + "</div>";
     logEl().appendChild(card);

@@ -641,5 +641,102 @@
     return best ? { name: best, fn: HANDLERS[best] } : null;
   }
 
-  return { HANDLERS, resolveTarget, resolveHandler };
+  // ---- previewTool: estimasi dampak READ-ONLY untuk pratinjau (Fase 5) ----
+  // TIDAK boleh mengubah dokumen. Mengembalikan string ringkas "apa yang akan terjadi".
+  async function previewTool(context, rawName, input) {
+    const resolved = resolveHandler(rawName);
+    const name = resolved ? resolved.name : rawName;
+    input = input || {};
+    try {
+      switch (name) {
+        case "replace_text": {
+          if (!input.find) return "cari-ganti";
+          const scope = input.target && input.target.mode &&
+                        input.target.mode !== "whole_document"
+            ? null : context.document.body;
+          const searchOn = scope || context.document.body;
+          const res = searchOn.search(input.find, {
+            matchCase: !!input.matchCase, matchWholeWord: !!input.wholeWord });
+          res.load("items"); await context.sync();
+          return res.items.length + "x ganti \"" + input.find + "\" → \"" +
+                 (input.replace || "") + "\"";
+        }
+        case "format_text":
+        case "format_paragraph":
+        case "apply_style":
+        case "format_list":
+        case "manage_comments":
+        case "insert_break":
+        case "insert_image": {
+          const ranges = await resolveTarget(context, input.target || { mode: "selection" });
+          const what = describeWrite(name, input);
+          return ranges.length + " bagian" + (what ? " — " + what : "");
+        }
+        case "set_page_layout": {
+          const parts = [];
+          if (input.orientation) parts.push("orientasi " + input.orientation);
+          if (input.paperSize) parts.push("kertas " + input.paperSize);
+          if (input.marginPreset) parts.push("margin " + input.marginPreset);
+          if (input.marginCm) parts.push("margin manual");
+          return "seluruh dokumen: " + (parts.join(", ") || "atur layout");
+        }
+        case "set_page_numbers":
+          return "nomor halaman di " + (input.position === "top" ? "atas" : "bawah") +
+                 " (" + (input.alignment || "Centered") + ")";
+        case "manage_header_footer":
+          return "tulis " + (input.area || "header") + ": \"" +
+                 String(input.text || "").slice(0, 40) + "\"";
+        case "insert_toc":
+          return "sisip daftar isi di " + (input.location === "selection" ? "kursor" : "awal");
+        case "set_track_changes":
+          return "track changes → " + input.mode;
+        case "create_table": {
+          if (input.fromSelection) {
+            const sel = context.document.getSelection(); sel.load("text");
+            await context.sync();
+            const rows = (sel.text || "").split(/\r?\n/).filter((l) => l.trim()).length;
+            return "buat tabel ~" + rows + " baris dari teks terseleksi";
+          }
+          const r = (input.data || []).length;
+          const c = r ? Math.max.apply(null, input.data.map((x) => x.length)) : 0;
+          return "buat tabel " + r + "×" + c;
+        }
+        case "edit_table":
+        case "format_table": {
+          const tables = context.document.body.tables; tables.load("items");
+          await context.sync();
+          const i = input.tableIndex || 0;
+          const base = "tabel #" + i + " dari " + tables.items.length;
+          if (name === "format_table") return base + ": border " + (input.borders || "—");
+          const ops = [];
+          if (input.cellEdits) ops.push(input.cellEdits.length + " sel");
+          if (input.addRows) ops.push("+" + input.addRows.length + " baris");
+          if (input.deleteRowIndices) ops.push("-" + input.deleteRowIndices.length + " baris");
+          return base + ": " + (ops.join(", ") || "edit");
+        }
+        default:
+          return "";
+      }
+    } catch (e) {
+      return "(pratinjau tak tersedia)";
+    }
+  }
+  function describeWrite(name, input) {
+    if (name === "format_text") {
+      const a = [];
+      if (input.bold) a.push("tebal");
+      if (input.italic) a.push("miring");
+      if (input.color) a.push("warna " + input.color);
+      if (input.fontSize) a.push(input.fontSize + "pt");
+      if (input.fontName) a.push(input.fontName);
+      return a.join(", ");
+    }
+    if (name === "apply_style") return "style " + (input.styleName || "");
+    if (name === "format_list") return (input.listType || "bullet");
+    if (name === "manage_comments") return "komentar";
+    if (name === "insert_break") return (input.breakType || "page") + " break";
+    return "";
+  }
+
+  return { HANDLERS, resolveTarget, resolveHandler, previewTool };
 });
