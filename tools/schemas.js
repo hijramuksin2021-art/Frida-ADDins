@@ -271,12 +271,20 @@
   const set_page_numbers = {
     name: "set_page_numbers",
     description:
-      "Tambahkan nomor halaman otomatis di footer setiap halaman. Gunakan untuk " +
-      "'beri nomor halaman' / 'tambahkan page number'.",
+      "Tambahkan nomor halaman OTOMATIS yang berjalan (1,2,3,…) di header (atas) atau footer " +
+      "(bawah) setiap halaman. Gunakan untuk 'beri nomor halaman', 'nomor halaman di tengah atas', " +
+      "'page number di kanan bawah', dll. Ini nomor field sungguhan, bukan teks statis.",
     input_schema: {
       type: "object",
       properties: {
-        alignment: { type: "string", enum: ["Left", "Centered", "Right"], default: "Centered" },
+        position: {
+          type: "string",
+          enum: ["top", "bottom"],
+          default: "bottom",
+          description: "top = header (atas halaman); bottom = footer (bawah halaman).",
+        },
+        alignment: { type: "string", enum: ["Left", "Centered", "Right"], default: "Centered",
+          description: "Perataan: 'tengah atas' -> position=top, alignment=Centered." },
         format: {
           type: "string",
           enum: ["plain", "page_x_of_y"],

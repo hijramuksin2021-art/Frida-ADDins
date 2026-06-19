@@ -219,7 +219,7 @@ const AGENT_SYSTEM_PROMPT = [
   "3) Pakai selektor 'target' yang tepat: mode 'heading' untuk semua judul, 'whole_document' untuk seluruh dokumen, 'selection' untuk blok aktif, 'paragraph_index' untuk paragraf tertentu, 'search' untuk kemunculan teks.",
   "PEMILIHAN TOOL (penting, jangan keliru):",
   "- 'ubah/ganti POSISI / ORIENTASI / TATA LETAK halaman', 'jadikan landscape/portrait', 'ganti ukuran kertas/A4', 'atur margin' -> set_page_layout. JANGAN pakai set_page_numbers untuk ini.",
-  "- 'beri/tambahkan NOMOR halaman', 'page number' -> set_page_numbers.",
+  "- 'beri/tambahkan NOMOR halaman', 'page number' -> set_page_numbers. Tool ini BISA menaruh nomor di ATAS (position=top) atau BAWAH (position=bottom), dan rata kiri/tengah/kanan. 'nomor di tengah atas' -> position=top, alignment=Centered. Ini nomor berjalan otomatis (1,2,3), jadi JANGAN menolak permintaan nomor di atas.",
   "- 'tulis teks di header/footer' -> manage_header_footer.",
   "Jika sebuah tool mengembalikan error, JANGAN mengulang tool yang sama berkali-kali; baca pesan error, perbaiki argumen, atau laporkan ke pengguna dengan teks.",
   "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",

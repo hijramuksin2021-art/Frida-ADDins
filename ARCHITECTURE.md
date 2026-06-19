@@ -645,6 +645,15 @@ Registry 7 → **12 tool**.
   halaman" → `set_page_numbers`; "ubah teks seleksi jadi tabel" → `create_table {fromSelection:true}`.
   Eksekusi di dokumen nyata perlu dites saat sideload.
 
+### Catatan Fase 4 — nomor halaman di header (atas)
+Dari pengujian: FRIDA menolak "nomor halaman di tengah atas" karena `set_page_numbers` di-hardcode
+ke footer & header hanya bisa teks statis.
+- **`set_page_numbers` + param `position` (top/bottom).** Field PAGE jalan sama baik di header,
+  jadi `position:"top"` menaruh nomor BERJALAN (1,2,3…) di header — bukan teks statis. `bottom` = default.
+- **System prompt** diperjelas: tool bisa atas/bawah + rata kiri/tengah/kanan; "tengah atas" →
+  `position=top, alignment=Centered`; larang menolak permintaan nomor di atas.
+- **Verifikasi:** "nomor halaman di tengah atas" → `set_page_numbers {position:"top",alignment:"Centered"}`.
+
 ### Catatan Fase 4 — perbaikan (bug dari pengujian sideload)
 Ditemukan saat pengguna mencoba: `set_page_numbers` melempar **GeneralException** berulang, dan
 "ubah posisi halaman" salah dirutekan ke `set_page_numbers`.

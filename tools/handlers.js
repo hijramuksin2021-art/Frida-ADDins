@@ -389,11 +389,15 @@
   // Pakai Range.insertField(FieldType.page) — jauh lebih andal daripada insertOoxml
   // ke footer (yang sering melempar GeneralException di Word desktop). Bila API field
   // tak tersedia di host, fallback ke teks biasa + catatan.
+  // position: 'top' = header (nomor di atas), 'bottom' = footer (default).
   async function set_page_numbers(context, args) {
     const section = context.document.sections.getFirst();
-    const footer = section.getFooter(Word.HeaderFooterType.primary);
-    footer.clear();
-    const p = footer.insertParagraph("", Word.InsertLocation.start);
+    const atTop = args.position === "top";
+    const area = atTop
+      ? section.getHeader(Word.HeaderFooterType.primary)
+      : section.getFooter(Word.HeaderFooterType.primary);
+    area.clear();
+    const p = area.insertParagraph("", Word.InsertLocation.start);
     p.alignment = args.alignment || "Centered";
     await context.sync();
 
@@ -411,14 +415,16 @@
         rEnd.insertField(Word.InsertLocation.end, Word.FieldType.numPages);
       }
       await context.sync();
-      return { ok: true, format: args.format || "plain", method: "field" };
+      return { ok: true, position: atTop ? "top" : "bottom",
+               format: args.format || "plain", method: "field" };
     }
 
     // Fallback: tanpa API field — tulis penanda agar pengguna tahu host tak mendukung.
     p.insertText(args.format === "page_x_of_y" ? "Halaman ? dari ?" : "Halaman ?",
                  Word.InsertLocation.start);
     await context.sync();
-    return { ok: true, format: args.format || "plain", method: "text_fallback",
+    return { ok: true, position: atTop ? "top" : "bottom",
+             format: args.format || "plain", method: "text_fallback",
              note: "Host tidak mendukung field otomatis; ditulis teks penanda." };
   }
 
