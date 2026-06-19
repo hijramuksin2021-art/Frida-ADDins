@@ -202,6 +202,91 @@ async function callClaude(userContent) {
   throw lastErr;
 }
 
+// ===================== FASE 2: endpoint agentic =====================
+// Berbeda dari /api/edit (one-shot, single tool), /api/agent adalah RELAY tipis:
+// klien mengirim SELURUH riwayat `messages` (termasuk tool_result dari eksekusi
+// sebelumnya), server memanggil provider SEKALI dengan daftar tools dari registry
+// (tool_choice: auto), lalu mengembalikan blok `content` apa adanya. LOOP ada di
+// KLIEN karena eksekusi tool wajib di dalam Word.run (Office.js). Server tetap
+// stateless & tidak pernah menyentuh dokumen.
+
+const AGENT_SYSTEM_PROMPT = [
+  "Nama Anda FRIDA, agen penyunting yang MENGENDALIKAN Microsoft Word lewat tool.",
+  "Anda tidak menyunting teks secara langsung; Anda memanggil tool yang disediakan.",
+  "ALUR WAJIB:",
+  "1) Panggil get_document_outline DULU untuk memahami struktur & indeks paragraf (kecuali instruksi jelas hanya soal seleksi aktif).",
+  "2) Susun rencana seminimal mungkin, lalu panggil tool write satu per satu.",
+  "3) Pakai selektor 'target' yang tepat: mode 'heading' untuk semua judul, 'whole_document' untuk seluruh dokumen, 'selection' untuk blok aktif, 'paragraph_index' untuk paragraf tertentu, 'search' untuk kemunculan teks.",
+  "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",
+  "Jangan mengubah bagian yang tidak diminta. Pertahankan bahasa dokumen.",
+  "Jika instruksi ambigu atau berisiko (mis. mengganti di seluruh dokumen), tetap usulkan tool call yang paling masuk akal; konfirmasi keamanan ditangani oleh aplikasi klien.",
+].join("\n");
+
+async function callAgentOnce(messages) {
+  const url = cfg.baseUrl.replace(/\/?$/, "/") + "v1/messages";
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": cfg.apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: cfg.model,
+      max_tokens: cfg.maxTokens || 8000,
+      system: AGENT_SYSTEM_PROMPT,
+      tools: TOOL_SCHEMAS,
+      tool_choice: { type: "auto" },
+      messages,
+    }),
+  });
+  const raw = await resp.text();
+  if (!resp.ok) throw new Error("Provider " + resp.status + ": " + raw.slice(0, 500));
+  const data = JSON.parse(raw);
+  // Kembalikan apa adanya yang dibutuhkan klien untuk melanjutkan loop.
+  return {
+    stop_reason: data.stop_reason,
+    content: data.content || [],
+  };
+}
+
+async function callAgent(messages) {
+  const maxTries = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    try {
+      return await callAgentOnce(messages);
+    } catch (err) {
+      lastErr = err;
+      console.warn("Agent percobaan " + attempt + "/" + maxTries + " gagal: " + (err.message || err));
+      if (attempt < maxTries) await sleep(800 * attempt);
+    }
+  }
+  throw lastErr;
+}
+
+function handleAgent(req, res) {
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", async () => {
+    try {
+      const { messages } = JSON.parse(body || "{}");
+      if (!Array.isArray(messages) || messages.length === 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "messages[] wajib diisi" }));
+        return;
+      }
+      const result = await callAgent(messages);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: String(err.message || err) }));
+    }
+  });
+}
+// =====================================================================
+
 async function handleEdit(req, res) {
   let body = "";
   req.on("data", c => (body += c));
@@ -244,6 +329,7 @@ async function handleEdit(req, res) {
 
   https
     .createServer(httpsOptions, (req, res) => {
+      if (req.method === "POST" && req.url.startsWith("/api/agent")) return handleAgent(req, res);
       if (req.method === "POST" && req.url.startsWith("/api/edit")) return handleEdit(req, res);
       if (req.method === "GET") return serveStatic(req, res);
       res.writeHead(405); res.end("Method not allowed");

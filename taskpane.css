@@ -41,3 +41,31 @@ button:disabled { opacity: .6; cursor: default; }
 .edit .old { color: #b91c1c; text-decoration: line-through; white-space: pre-wrap; }
 .edit .new { color: #15803d; white-space: pre-wrap; }
 .summary { font-weight: 600; margin-bottom: 8px; }
+
+/* ---- Chat UI (Fase 2) ---- */
+.log {
+  margin-top: 8px; max-height: 52vh; overflow-y: auto;
+  border: 1px solid #eee; border-radius: 8px; padding: 10px; background: #fafafa;
+}
+.msg {
+  margin: 0 0 8px; padding: 8px 10px; border-radius: 8px;
+  white-space: pre-wrap; word-wrap: break-word; font-size: 13px; line-height: 1.4;
+}
+.msg.user { background: #c2410c; color: #fff; margin-left: 24px; }
+.msg.assistant { background: #fff; border: 1px solid #e5e5e5; }
+.msg.error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+
+.tool {
+  border: 1px solid #e5e5e5; border-left: 3px solid #6b7280;
+  border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; background: #fff; font-size: 12px;
+}
+.tool .args { color: #444; font-family: ui-monospace, monospace; font-size: 11.5px; margin: 2px 0; }
+.tool .tnote { color: #888; font-size: 11.5px; }
+.tool .tnote.ok { color: #15803d; }
+.tool .tnote.err { color: #b91c1c; }
+
+.confirm { display: flex; gap: 8px; margin: 0 0 10px; }
+.confirm button { margin-top: 0; }
+
+.composer { margin-top: 10px; }
+.composer textarea { font-size: 13px; }

@@ -158,5 +158,24 @@
     replace_text,
   };
 
-  return { HANDLERS, resolveTarget };
+  // ---- Pemetaan nama tool yang andal ----
+  // Beberapa provider/proxy MENGUBAH nama tool di respons (mis. 'get_document_outline'
+  // menjadi 'CompatGetDocumentOutline375718'). Cocokkan via bentuk kanonik (huruf+angka,
+  // lowercase) dengan containment: nama registry yang terkandung di nama balasan dipakai;
+  // bila banyak yang cocok, ambil yang TERPANJANG (paling spesifik).
+  function canon(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+  function resolveHandler(name) {
+    if (HANDLERS[name]) return { name, fn: HANDLERS[name] };
+    const target = canon(name);
+    let best = null;
+    for (const key of Object.keys(HANDLERS)) {
+      const ck = canon(key);
+      if (target.includes(ck) && (!best || ck.length > canon(best).length)) best = key;
+    }
+    return best ? { name: best, fn: HANDLERS[best] } : null;
+  }
+
+  return { HANDLERS, resolveTarget, resolveHandler };
 });

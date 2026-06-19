@@ -525,8 +525,8 @@ async function insert_cover_page(context, a) {
 |---|---|---|---|
 | **0 — Hardening** | ✅ SELESAI | Key → env, `.env`/`.env.example`, `.gitignore`, path guard, git init | `config.json`, `server.js` |
 | **1 — Tool registry** | ✅ SELESAI | Registry deklaratif `tools/`; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget`; selfcheck parity | `tools/`, `server.js` |
-| **2 — Agentic loop** | ⬜ Berikutnya | `/api/agent` multi-turn `tool_use`↔`tool_result`; dispatcher klien; chat UI | `callOnce`, `process()`, `tools/handlers.js` |
-| **3 — Safety core** | ⬜ | TransactionManager (snapshot OOXML), rollback, Undo, permission gate, riskScore | baru |
+| **2 — Agentic loop** | ✅ SELESAI | `/api/agent` relay multi-turn; loop `tool_use`↔`tool_result` di klien; dispatcher via `resolveHandler`; chat UI; read auto / write konfirmasi | `server.js`, `taskpane.*`, `tools/handlers.js` |
+| **3 — Safety core** | ⬜ Berikutnya | TransactionManager (snapshot OOXML), rollback, Undo, permission gate per-tool, riskScore | baru |
 | **4 — Tool breadth** | ⬜ | Lengkapi 18 tool | baru |
 | **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
 | **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
@@ -557,6 +557,30 @@ async function insert_cover_page(context, a) {
   `/api/agent` yang memakai registry menyusul di Fase 2.
 - **Belum** mengubah `taskpane.js`/UI — itu bagian Fase 2 (dispatcher klien + chat). Registry sudah
   bisa di-load browser via `window.FRIDA_*` begitu `taskpane.html` menyertakan kedua file `tools/`.
+
+### Catatan Fase 2 (apa yang berubah)
+- **`server.js`** — endpoint baru **`/api/agent`**: relay tipis & stateless. Klien mengirim
+  SELURUH `messages` (termasuk `tool_result`), server memanggil provider sekali dengan
+  `tools: TOOL_SCHEMAS` + `tool_choice: auto`, lalu mengembalikan `{stop_reason, content}` apa
+  adanya. `AGENT_SYSTEM_PROMPT` mengarahkan "outline dulu → tool write satu per satu → jawaban
+  teks akhir". `/api/edit` lama **tetap ada** (tidak ada regresi).
+- **`taskpane.js`** — ditulis ulang jadi **loop agentic di klien** (`runAgentLoop`): kirim →
+  terima → jika ada `tool_use`, eksekusi via `HANDLERS` di dalam satu `Word.run` → balas
+  `tool_result` → ulangi; berhenti saat balasan tanpa `tool_use`. `MAX_STEPS=12` sbg batas aman.
+- **Jembatan keamanan (sebelum Fase 3):** tool READ (`get_document_outline`, `search_text`)
+  jalan otomatis; batch yang memuat tool WRITE **ditahan** dan butuh klik "Jalankan" (`confirmBatch`).
+  Batal → kirim `tool_result is_error` agar model berhenti rapi.
+- **`taskpane.html` / `taskpane.css`** — UI chat (gelembung user/assistant + kartu tool).
+  HTML memuat `tools/schemas.js` & `tools/handlers.js` sebelum `taskpane.js`
+  (registry tersedia via `window.FRIDA_*`).
+- **Bug nyata yang ditemukan & diperbaiki:** provider/proxy me-RENAME nama tool di respons
+  (mis. `get_document_outline` → `CompatGetDocumentOutline375718` — persis peringatan lama di
+  `/api/edit`). Karena dispatcher multi-tool mencocokkan nama, ditambahkan **`resolveHandler`**
+  (handlers.js): cocokkan via bentuk kanonik + containment, ambil yang terpanjang. Dipakai untuk
+  dispatch DAN klasifikasi read/write di UI. Regresi ini diuji permanen di `selfcheck`.
+- **Verifikasi end-to-end:** server boot OK; `/tools/*.js` tersaji (200), `.env` ditolak (403);
+  `/api/agent` validasi input (400) dan panggilan nyata mengembalikan `stop_reason: tool_use`
+  dengan model memilih `get_document_outline` lebih dulu (alur outline-first bekerja).
 
 > **PENTING (rotasi key):** key lama sempat tersimpan plaintext di `config.json`. Karena belum
 > pernah ter-commit ke git (repo baru di-init bersih), risikonya terbatas pada mesin lokal. Tetap

@@ -7,7 +7,7 @@
 // Exit code != 0 bila ada pelanggaran (cocok untuk CI / pre-commit nanti).
 
 const { SCHEMAS } = require("./schemas");
-const { HANDLERS, resolveTarget } = require("./handlers");
+const { HANDLERS, resolveTarget, resolveHandler } = require("./handlers");
 
 const problems = [];
 const ok = [];
@@ -38,6 +38,17 @@ for (const n of handlerNames) {
 
 // 4) resolveTarget tersedia
 check(typeof resolveTarget === "function", "resolveTarget hilang dari handlers");
+
+// 5) resolveHandler tahan nama yang di-rename provider (regresi Fase 2)
+check(typeof resolveHandler === "function", "resolveHandler hilang dari handlers");
+if (typeof resolveHandler === "function") {
+  const r1 = resolveHandler("CompatGetDocumentOutline375718");
+  check(r1 && r1.name === "get_document_outline",
+    "resolveHandler gagal memetakan nama ter-rename ke get_document_outline",
+    "resolveHandler memetakan nama ter-rename");
+  check(resolveHandler("totally_unknown_xyz") === null,
+    "resolveHandler salah memetakan nama yang tak dikenal", "resolveHandler menolak nama tak dikenal");
+}
 
 // laporan
 console.log(`FRIDA tool registry selfcheck`);

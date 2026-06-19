@@ -1,200 +1,228 @@
-/* FRIDA — penyunting cerdas di dalam Word.
-   Alur: kumpulkan konteks (semua paragraf + seleksi + tabel terseleksi) -> kirim ke
-   server lokal (/api/edit) bersama instruksi -> terima rencana perubahan ->
-   terapkan ke Word: perbaiki (replace), sisip paragraf (insertAfter/append),
-   atau rapikan sel tabel (tableOps). */
+/* FRIDA Agent (Fase 2) — loop agentic di klien.
+   Alur:
+     1) Pengguna kirim instruksi -> ditambah ke `messages`.
+     2) POST /api/agent (server relay tipis ke LLM dgn daftar tools dari registry).
+     3) LLM membalas: bisa teks, bisa satu/lebih blok tool_use.
+     4) Klien MENJALANKAN tool_use lewat HANDLERS di dalam Word.run (Office.js),
+        membungkus hasilnya jadi tool_result, lalu KIRIM LAGI -> ulangi.
+     5) Berhenti ketika LLM membalas tanpa tool_use (jawaban akhir).
+
+   Jembatan keamanan sebelum Fase 3 (TransactionManager/rollback):
+     - Tool READ (mis. get_document_outline) jalan OTOMATIS.
+     - Batch yang memuat tool WRITE DITAHAN: ditampilkan dulu, butuh klik "Jalankan".
+   Registry datang dari window.FRIDA_SCHEMAS & window.FRIDA_HANDLERS (file tools/). */
+
+const READ_TOOLS = new Set(["get_document_outline", "search_text"]);
+const MAX_STEPS = 12; // batas langkah loop (safety)
+
+// Nama tool dari provider kadang di-rename (lihat resolveHandler di handlers.js).
+// Resolusikan ke nama registry kanonik sebelum klasifikasi read/write & pelabelan.
+function canonName(name) {
+  const r = window.FRIDA_HANDLERS && window.FRIDA_HANDLERS.resolveHandler(name);
+  return r ? r.name : name;
+}
+function isReadTool(name) { return READ_TOOLS.has(canonName(name)); }
+
+let messages = []; // riwayat percakapan untuk LLM
+let running = false;
 
 Office.onReady((info) => {
-  if (info.host === Office.HostType.Word) {
-    document.getElementById("run").onclick = () => process(true);
-    document.getElementById("preview").onclick = () => process(false);
-  } else {
+  if (info.host !== Office.HostType.Word) {
     setStatus("FRIDA hanya untuk Microsoft Word.", "err");
+    return;
   }
+  if (!window.FRIDA_HANDLERS || !window.FRIDA_SCHEMAS) {
+    setStatus("Registry tool gagal dimuat (tools/schemas.js & handlers.js).", "err");
+    return;
+  }
+  document.getElementById("send").onclick = onSend;
+  document.getElementById("instruction").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSend(); }
+  });
 });
 
+// ---------- UI helpers ----------
 function setStatus(msg, cls) {
   const el = document.getElementById("status");
-  el.textContent = msg;
+  el.textContent = msg || "";
   el.className = "status" + (cls ? " " + cls : "");
 }
-
 function busy(on) {
-  document.getElementById("run").disabled = on;
-  document.getElementById("preview").disabled = on;
+  running = on;
+  document.getElementById("send").disabled = on;
+  document.getElementById("instruction").disabled = on;
+}
+function logEl() { return document.getElementById("log"); }
+function scrollDown() { const l = logEl(); l.scrollTop = l.scrollHeight; }
+
+function addBubble(role, html) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.innerHTML = html;
+  logEl().appendChild(div);
+  scrollDown();
+  return div;
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Ambil seluruh paragraf dokumen + teks/indeks seleksi + grid tabel (jika ada).
-async function gatherContext(context) {
-  const body = context.document.body;
-  const allParas = body.paragraphs;
-  allParas.load("items/text");
+// ---------- alur utama ----------
+async function onSend() {
+  if (running) return;
+  const input = document.getElementById("instruction");
+  const text = input.value.trim();
+  if (!text) { setStatus("Tulis dulu perintahnya untuk FRIDA.", "err"); return; }
 
-  const sel = context.document.getSelection();
-  const selParas = sel.paragraphs;
-  selParas.load("items/text");
-  sel.load("text");
+  addBubble("user", escapeHtml(text));
+  messages.push({ role: "user", content: text });
+  input.value = "";
 
-  // tabel yang menyentuh seleksi
-  const selTables = sel.tables;
-  selTables.load("items");
-
-  await context.sync();
-
-  const paragraphs = [];
-  allParas.items.forEach((p, i) => {
-    if (p.text && p.text.trim().length) paragraphs.push({ i, text: p.text });
-  });
-
-  // cocokkan paragraf terseleksi ke indeks dokumen (berdasarkan teks)
-  const selIndices = [];
-  const selTexts = selParas.items.map((p) => p.text);
-  allParas.items.forEach((p, i) => {
-    if (selTexts.includes(p.text) && p.text.trim().length) selIndices.push(i);
-  });
-  const selection = sel.text && sel.text.trim().length
-    ? { text: sel.text, indices: selIndices }
-    : null;
-
-  // baca grid tabel pertama yang diseleksi
-  let table = null;
-  let tableObj = null;
-  if (selTables.items.length > 0) {
-    tableObj = selTables.items[0];
-    tableObj.load("values");
-    await context.sync();
-    table = { rows: tableObj.values };
-  }
-
-  return { paragraphs, selection, table, allParas, tableObj, body };
-}
-
-async function process(apply) {
-  const instruction = document.getElementById("instruction").value.trim();
-  if (!instruction) { setStatus("Tulis dulu perintahnya untuk FRIDA.", "err"); return; }
-  document.getElementById("result").innerHTML = "";
   busy(true);
-  setStatus(apply ? "FRIDA membaca dokumen…" : "FRIDA menyiapkan tinjauan…");
-
+  setStatus("FRIDA berpikir…");
   try {
-    await Word.run(async (context) => {
-      const ctx = await gatherContext(context);
-      if (ctx.paragraphs.length === 0 && !ctx.table) {
-        setStatus("Dokumen kosong.", "err"); return;
-      }
-
-      const resp = await fetch("/api/edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instruction,
-          paragraphs: ctx.paragraphs,
-          selection: ctx.selection,
-          table: ctx.table,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
-
-      const pOps = Array.isArray(data.paragraphOps) ? data.paragraphOps : [];
-      const tOps = Array.isArray(data.tableOps) ? data.tableOps : [];
-      renderResult(data.summary, pOps, tOps, ctx.paragraphs);
-
-      if (!apply) {
-        setStatus((pOps.length + tOps.length) + " usulan perubahan (belum diterapkan).", "ok");
-        return;
-      }
-      if (pOps.length === 0 && tOps.length === 0) {
-        setStatus("Tidak ada yang perlu diubah.", "ok"); return;
-      }
-
-      let count = applyParagraphOps(ctx.allParas, ctx.body, pOps);
-      count += applyTableOps(ctx.tableObj, tOps);
-      await context.sync();
-      setStatus("FRIDA menerapkan " + count + " perubahan ke dokumen.", "ok");
-    });
+    await runAgentLoop();
+    setStatus("Selesai.", "ok");
   } catch (err) {
     setStatus("Gagal: " + (err.message || err), "err");
+    addBubble("error", "⚠️ " + escapeHtml(err.message || String(err)));
   } finally {
     busy(false);
   }
 }
 
-// Terapkan operasi paragraf. Penting: kerjakan dari indeks BESAR ke kecil
-// agar penyisipan tidak menggeser indeks paragraf berikutnya.
-function applyParagraphOps(allParas, body, ops) {
-  let n = 0;
-  const items = allParas.items;
-  // kerjakan dari indeks besar ke kecil agar penyisipan tidak menggeser indeks lain
-  const sorted = ops.slice().sort((a, b) => (b.i ?? 1e9) - (a.i ?? 1e9));
-  sorted.forEach((op) => {
-    if (typeof op.newText !== "string") return;
-    const chunks = op.newText.split("\n").map((s) => s.trim()).filter((s) => s.length > 0);
-
-    if (op.action === "append") {
-      chunks.forEach((t) => body.insertParagraph(t, Word.InsertLocation.end));
-      n++;
-    } else if (op.action === "insertAfter") {
-      const target = items[op.i];
-      if (!target) return;
-      let anchor = target;
-      chunks.forEach((t) => { anchor = anchor.insertParagraph(t, Word.InsertLocation.after); });
-      n++;
-    } else { // replace
-      const target = items[op.i];
-      if (!target) return;
-      target.insertText(op.newText, Word.InsertLocation.replace);
-      n++;
-    }
-  });
-  return n;
-}
-
-function applyTableOps(tableObj, ops) {
-  if (!tableObj || ops.length === 0) return 0;
-  let n = 0;
-  ops.forEach((op) => {
-    try {
-      const cell = tableObj.getCell(op.r, op.c);
-      cell.body.clear();
-      cell.body.insertText(op.newText, Word.InsertLocation.start);
-      n++;
-    } catch (e) { /* sel di luar jangkauan: lewati */ }
-  });
-  return n;
-}
-
-function renderResult(summary, pOps, tOps, paragraphs) {
-  const byIndex = {};
-  paragraphs.forEach((p) => (byIndex[p.i] = p.text));
-  const box = document.getElementById("result");
-  let html = "";
-  if (summary) html += '<div class="summary">' + escapeHtml(summary) + "</div>";
-
-  pOps.forEach((op) => {
-    const label =
-      op.action === "append" ? "➕ Tambah di akhir" :
-      op.action === "insertAfter" ? "➕ Sisip paragraf baru" : "✏️ Perbaiki";
-    html += '<div class="edit">';
-    html += '<div class="tag">' + label + (op.reason ? " — " + escapeHtml(op.reason) : "") + "</div>";
-    if (op.action === "replace" && byIndex[op.i] != null) {
-      html += '<div class="old">' + escapeHtml(byIndex[op.i]) + "</div>";
-    }
-    html += '<div class="new">' + escapeHtml(op.newText) + "</div>";
-    html += "</div>";
-  });
-
-  if (tOps.length) {
-    html += '<div class="edit"><div class="tag">📊 Rapikan tabel (' + tOps.length + " sel)</div>";
-    tOps.forEach((op) => {
-      html += '<div class="cell">[' + op.r + "," + op.c + "] → " + escapeHtml(op.newText) + "</div>";
+async function runAgentLoop() {
+  for (let step = 0; step < MAX_STEPS; step++) {
+    setStatus("FRIDA berpikir… (langkah " + (step + 1) + ")");
+    const resp = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
     });
-    html += "</div>";
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+
+    const content = Array.isArray(data.content) ? data.content : [];
+    messages.push({ role: "assistant", content }); // simpan turn asisten apa adanya
+
+    // tampilkan teks yang ada
+    content.filter((b) => b.type === "text" && b.text && b.text.trim())
+           .forEach((b) => addBubble("assistant", escapeHtml(b.text)));
+
+    const toolUses = content.filter((b) => b.type === "tool_use");
+    if (toolUses.length === 0) return; // jawaban akhir -> selesai
+
+    // ada write tool? -> tahan untuk konfirmasi
+    const hasWrite = toolUses.some((t) => !isReadTool(t.name));
+    if (hasWrite) {
+      const okGo = await confirmBatch(toolUses);
+      if (!okGo) {
+        // user batal: balas tool_result error agar model berhenti/menyesuaikan
+        messages.push({ role: "user", content: toolUses.map((t) => ({
+          type: "tool_result", tool_use_id: t.id, is_error: true,
+          content: "Dibatalkan oleh pengguna.",
+        })) });
+        addBubble("error", "Dibatalkan. FRIDA tidak menerapkan perubahan.");
+        return;
+      }
+    } else {
+      renderToolCalls(toolUses, "membaca dokumen…");
+    }
+
+    setStatus("FRIDA menjalankan " + toolUses.length + " aksi…");
+    const results = await executeToolUses(toolUses);
+    messages.push({ role: "user", content: results });
   }
-  box.innerHTML = html;
+  addBubble("error", "Batas langkah tercapai (" + MAX_STEPS + ").");
 }
 
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// Eksekusi satu batch tool_use dalam SATU Word.run -> array tool_result.
+async function executeToolUses(toolUses) {
+  const { resolveHandler } = window.FRIDA_HANDLERS;
+  const results = [];
+  await Word.run(async (context) => {
+    for (const tu of toolUses) {
+      const resolved = resolveHandler(tu.name); // tahan nama yang di-rename provider
+      if (!resolved) {
+        results.push(toolResult(tu.id, { error: "tool tidak dikenal: " + tu.name }, true));
+        continue;
+      }
+      try {
+        const out = await resolved.fn(context, tu.input || {});
+        results.push(toolResult(tu.id, out, false));
+        markToolDone(tu.id, out);
+      } catch (e) {
+        const msg = (e && e.message) || String(e);
+        results.push(toolResult(tu.id, { error: msg }, true));
+        markToolDone(tu.id, { error: msg }, true);
+      }
+    }
+  });
+  return results;
+}
+
+function toolResult(id, obj, isError) {
+  return { type: "tool_result", tool_use_id: id, is_error: !!isError,
+           content: JSON.stringify(obj) };
+}
+
+// ---------- render kartu tool ----------
+function confirmBatch(toolUses) {
+  renderToolCalls(toolUses, "menunggu konfirmasi…");
+  return new Promise((resolve) => {
+    const wrap = document.createElement("div");
+    wrap.className = "confirm";
+    const yes = document.createElement("button");
+    yes.className = "primary"; yes.textContent = "Jalankan " + toolUses.length + " aksi";
+    const no = document.createElement("button");
+    no.textContent = "Batal";
+    yes.onclick = () => { wrap.remove(); resolve(true); };
+    no.onclick = () => { wrap.remove(); resolve(false); };
+    wrap.appendChild(yes); wrap.appendChild(no);
+    logEl().appendChild(wrap);
+    scrollDown();
+  });
+}
+
+function renderToolCalls(toolUses, note) {
+  toolUses.forEach((tu) => {
+    const card = document.createElement("div");
+    card.className = "tool";
+    card.id = "tool-" + tu.id;
+    const isRead = isReadTool(tu.name);
+    card.innerHTML =
+      '<div class="tag">' + (isRead ? "🔍 " : "✏️ ") + escapeHtml(canonName(tu.name)) + "</div>" +
+      '<div class="args">' + escapeHtml(summarizeArgs(tu.input)) + "</div>" +
+      '<div class="tnote">' + escapeHtml(note || "") + "</div>";
+    logEl().appendChild(card);
+  });
+  scrollDown();
+}
+
+function markToolDone(id, out, isError) {
+  const card = document.getElementById("tool-" + id);
+  if (!card) return;
+  const note = card.querySelector(".tnote");
+  if (!note) return;
+  if (isError) { note.textContent = "gagal: " + (out.error || ""); note.className = "tnote err"; }
+  else { note.textContent = "selesai " + summarizeOut(out); note.className = "tnote ok"; }
+}
+
+function summarizeArgs(input) {
+  if (!input) return "";
+  const t = input.target;
+  const scope = t ? (t.mode + (t.value ? " '" + t.value + "'" : "") +
+                     (t.index != null ? " #" + t.index : "")) : "";
+  const rest = Object.keys(input)
+    .filter((k) => k !== "target")
+    .map((k) => k + "=" + JSON.stringify(input[k]))
+    .join(", ");
+  return [scope, rest].filter(Boolean).join(" | ");
+}
+function summarizeOut(out) {
+  if (out == null) return "";
+  if (out.replaced != null) return "(" + out.replaced + " diganti)";
+  if (out.applied != null) return "(" + out.applied + " range)";
+  if (out.paragraphs != null) return "(" + out.paragraphs.length + " paragraf)";
+  return "";
 }

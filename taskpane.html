@@ -11,23 +11,32 @@
   <header>
     <img src="assets/frida-logo.png" alt="FRIDA" class="logo" />
     <h1>FRIDA</h1>
-    <p class="sub">Perbaiki &middot; tambah teks &middot; rapikan tabel — langsung di Word</p>
+    <p class="sub">Agen Word — beri perintah, FRIDA yang mengerjakan</p>
   </header>
 
   <main>
-    <label for="instruction">Apa yang ingin Anda minta ke FRIDA?</label>
-    <textarea id="instruction" rows="4"
-      placeholder="Contoh:&#10;• Perbaiki semua typo dan tata bahasa.&#10;• Tambahkan di paragraf ini kalimat penutup.&#10;• Di paragraf akhir, tambah 2 paragraf lagi.&#10;• (blok tabel) Rapikan isi tabel ini."></textarea>
-
-    <p class="hint">Tips: blok/seleksi dulu bagian (atau tabel) yang Anda maksud, lalu tulis perintahnya.</p>
-
-    <button id="run" class="primary">Kerjakan &amp; Terapkan</button>
-    <button id="preview">Tinjau dulu (tanpa menerapkan)</button>
+    <div id="log" class="log">
+      <div class="msg assistant">
+        Halo, saya FRIDA. Contoh perintah:<br />
+        • Buat semua heading biru ukuran 18.<br />
+        • Ganti semua "Company A" jadi "Company B".<br />
+        • Tebalkan teks yang sedang saya blok.
+      </div>
+    </div>
 
     <div id="status" class="status"></div>
-    <div id="result"></div>
+
+    <div class="composer">
+      <textarea id="instruction" rows="3"
+        placeholder="Tulis perintah untuk FRIDA… (Ctrl+Enter untuk kirim)"></textarea>
+      <button id="send" class="primary">Kirim</button>
+      <p class="hint">Tips: blok dulu bagian yang dimaksud bila perintah menyebut "ini" / "di sini".</p>
+    </div>
   </main>
 
+  <!-- Registry tool (sumber kebenaran bersama dgn server). Muat SEBELUM taskpane.js. -->
+  <script src="tools/schemas.js"></script>
+  <script src="tools/handlers.js"></script>
   <script src="taskpane.js"></script>
 </body>
 </html>
