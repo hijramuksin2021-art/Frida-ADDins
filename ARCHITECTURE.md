@@ -645,6 +645,21 @@ Registry 7 → **12 tool**.
   halaman" → `set_page_numbers`; "ubah teks seleksi jadi tabel" → `create_table {fromSelection:true}`.
   Eksekusi di dokumen nyata perlu dites saat sideload.
 
+### Catatan Fase 4 — perbaikan (bug dari pengujian sideload)
+Ditemukan saat pengguna mencoba: `set_page_numbers` melempar **GeneralException** berulang, dan
+"ubah posisi halaman" salah dirutekan ke `set_page_numbers`.
+- **`set_page_numbers` ditulis ulang:** `insertOoxml` ke paragraf footer ternyata rapuh
+  (GeneralException di Word desktop). Diganti **`Range.insertField(Word.FieldType.page)`** (+ `numPages`
+  utk "x of y") — API resmi yang andal. Ada fallback teks bila host tak mendukung field. Helper
+  OOXML field lama (`fldSimple`/`wrapRunOoxml`) dihapus.
+- **Pelaporan error diperbaiki:** `officeErr()` di `taskpane.js` mengekstrak `.code` & `.debugInfo`
+  dari `RichApi.Error`, jadi pesan bukan lagi sekadar "GeneralException" tetapi menyertakan
+  kode & lokasi — berguna utk model maupun pengguna.
+- **Routing tool diperjelas** di `AGENT_SYSTEM_PROMPT`: posisi/orientasi/ukuran/margin → `set_page_layout`;
+  nomor halaman → `set_page_numbers`; + larangan mengulang tool yang sama saat error.
+- **Verifikasi agent nyata:** "ubah posisi halaman" (ambigu) → model minta klarifikasi (bukan salah
+  tool); "ganti orientasi jadi landscape" → `set_page_layout`; "beri nomor halaman" → `set_page_numbers`.
+
 > **PENTING (rotasi key):** key lama sempat tersimpan plaintext di `config.json`. Karena belum
 > pernah ter-commit ke git (repo baru di-init bersih), risikonya terbatas pada mesin lokal. Tetap
 > disarankan **merotasi/regenerate API key** di dashboard provider bila file ini pernah tersalin

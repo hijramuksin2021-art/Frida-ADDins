@@ -385,19 +385,41 @@
     return { ok: true, area: args.area };
   }
 
-  // ---- Tool: set_page_numbers (write, OOXML PAGE field) ----
+  // ---- Tool: set_page_numbers (write) ----
+  // Pakai Range.insertField(FieldType.page) — jauh lebih andal daripada insertOoxml
+  // ke footer (yang sering melempar GeneralException di Word desktop). Bila API field
+  // tak tersedia di host, fallback ke teks biasa + catatan.
   async function set_page_numbers(context, args) {
     const section = context.document.sections.getFirst();
     const footer = section.getFooter(Word.HeaderFooterType.primary);
     footer.clear();
     const p = footer.insertParagraph("", Word.InsertLocation.start);
     p.alignment = args.alignment || "Centered";
-    const ooxml = args.format === "page_x_of_y"
-      ? wrapRunOoxml(fldSimple("PAGE") + textRun(" of ") + fldSimple("NUMPAGES"))
-      : wrapRunOoxml(fldSimple("PAGE"));
-    p.insertOoxml(ooxml, Word.InsertLocation.replace);
     await context.sync();
-    return { ok: true, format: args.format || "plain" };
+
+    const canField =
+      typeof Word !== "undefined" &&
+      Word.FieldType && p.getRange && typeof p.getRange().insertField === "function";
+
+    if (canField) {
+      // sisipkan field PAGE (dan NUMPAGES utk "x of y") ke dalam paragraf footer
+      const r0 = p.getRange(Word.RangeLocation.start);
+      r0.insertField(Word.InsertLocation.start, Word.FieldType.page);
+      if (args.format === "page_x_of_y") {
+        const rEnd = p.getRange(Word.RangeLocation.end);
+        rEnd.insertText(" of ", Word.InsertLocation.end);
+        rEnd.insertField(Word.InsertLocation.end, Word.FieldType.numPages);
+      }
+      await context.sync();
+      return { ok: true, format: args.format || "plain", method: "field" };
+    }
+
+    // Fallback: tanpa API field — tulis penanda agar pengguna tahu host tak mendukung.
+    p.insertText(args.format === "page_x_of_y" ? "Halaman ? dari ?" : "Halaman ?",
+                 Word.InsertLocation.start);
+    await context.sync();
+    return { ok: true, format: args.format || "plain", method: "text_fallback",
+             note: "Host tidak mendukung field otomatis; ditulis teks penanda." };
   }
 
   // ---- Tool: insert_image (write) ----
@@ -411,21 +433,6 @@
     if (args.width) pic.width = args.width;
     await context.sync();
     return { ok: true };
-  }
-
-  // --- util OOXML untuk field (PAGE/NUMPAGES) ---
-  function fldSimple(instr) {
-    return '<w:fldSimple w:instr=" ' + instr + ' "><w:r><w:t>1</w:t></w:r></w:fldSimple>';
-  }
-  function textRun(t) { return '<w:r><w:t xml:space="preserve">' + t + '</w:t></w:r>'; }
-  function wrapRunOoxml(inner) {
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
-      '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">' +
-      '<pkg:xmlData>' +
-      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      '<w:body><w:p>' + inner + '</w:p></w:body></w:document>' +
-      '</pkg:xmlData></pkg:part></pkg:package>';
   }
 
   const HANDLERS = {

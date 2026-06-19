@@ -183,7 +183,7 @@ async function executeToolUses(toolUses, isWrite) {
         markToolDone(tu.id, out);
         audit && audit.record({ name: resolved.name, input: tu.input }, out, false);
       } catch (e) {
-        const msg = (e && e.message) || String(e);
+        const msg = officeErr(e);
         results.push(toolResult(tu.id, { error: msg }, true));
         markToolDone(tu.id, { error: msg }, true);
         audit && audit.record({ name: resolved.name, input: tu.input }, { error: msg }, true);
@@ -209,6 +209,19 @@ async function executeToolUses(toolUses, isWrite) {
 function toolResult(id, obj, isError) {
   return { type: "tool_result", tool_use_id: id, is_error: !!isError,
            content: JSON.stringify(obj) };
+}
+
+// Ekstrak detail dari error Office.js (RichApi.Error punya .code & .debugInfo)
+// sehingga model & pengguna melihat lebih dari sekadar "GeneralException".
+function officeErr(e) {
+  if (!e) return "error tak diketahui";
+  let s = (e.code ? e.code + ": " : "") + (e.message || String(e));
+  if (e.debugInfo) {
+    const d = e.debugInfo;
+    const extra = [d.errorLocation, d.message].filter(Boolean).join(" @ ");
+    if (extra && extra !== e.message) s += " (" + extra + ")";
+  }
+  return s;
 }
 
 // ---------- konfirmasi & undo & audit ----------
