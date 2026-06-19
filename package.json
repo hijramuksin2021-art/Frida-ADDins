@@ -1,0 +1,14 @@
+{
+  "name": "claude-word-addin",
+  "version": "1.0.0",
+  "description": "Add-in Word pribadi: baca seluruh dokumen, perbaiki dengan Claude (via provider aerolink), langsung terapkan.",
+  "private": true,
+  "scripts": {
+    "cert": "office-addin-dev-certs install",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "jimp": "^1.6.1",
+    "office-addin-dev-certs": "^1.13.0"
+  }
+}

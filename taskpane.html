@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FRIDA</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css" />
+</head>
+<body>
+  <header>
+    <img src="assets/frida-logo.png" alt="FRIDA" class="logo" />
+    <h1>FRIDA</h1>
+    <p class="sub">Perbaiki &middot; tambah teks &middot; rapikan tabel — langsung di Word</p>
+  </header>
+
+  <main>
+    <label for="instruction">Apa yang ingin Anda minta ke FRIDA?</label>
+    <textarea id="instruction" rows="4"
+      placeholder="Contoh:&#10;• Perbaiki semua typo dan tata bahasa.&#10;• Tambahkan di paragraf ini kalimat penutup.&#10;• Di paragraf akhir, tambah 2 paragraf lagi.&#10;• (blok tabel) Rapikan isi tabel ini."></textarea>
+
+    <p class="hint">Tips: blok/seleksi dulu bagian (atau tabel) yang Anda maksud, lalu tulis perintahnya.</p>
+
+    <button id="run" class="primary">Kerjakan &amp; Terapkan</button>
+    <button id="preview">Tinjau dulu (tanpa menerapkan)</button>
+
+    <div id="status" class="status"></div>
+    <div id="result"></div>
+  </main>
+
+  <script src="taskpane.js"></script>
+</body>
+</html>

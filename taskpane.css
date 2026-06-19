@@ -1,0 +1,43 @@
+* { box-sizing: border-box; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  margin: 0;
+  padding: 0 14px 24px;
+  color: #1f1f1f;
+  background: #fff;
+  font-size: 14px;
+}
+header { padding: 14px 0 6px; }
+.logo { display: block; max-width: 180px; max-height: 90px; margin: 0 0 6px; }
+h1 { font-size: 20px; margin: 0; color: #c2410c; letter-spacing: 1px; }
+.sub { margin: 2px 0 0; color: #666; font-size: 12px; }
+.hint { color: #888; font-size: 11.5px; margin: 6px 0 0; }
+.tag { font-weight: 600; font-size: 12px; margin-bottom: 4px; color: #c2410c; }
+.cell { font-size: 12px; color: #15803d; white-space: pre-wrap; margin: 2px 0; }
+label { display: block; font-weight: 600; margin: 12px 0 4px; }
+textarea {
+  width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;
+  font-family: inherit; font-size: 13px; resize: vertical;
+}
+.row { margin: 8px 0; }
+.check { font-weight: 400; display: flex; align-items: center; gap: 6px; }
+button {
+  width: 100%; padding: 9px; margin-top: 8px; border-radius: 6px;
+  border: 1px solid #ccc; background: #f3f3f3; cursor: pointer; font-size: 14px;
+}
+button:hover { background: #ececec; }
+button.primary { background: #c2410c; color: #fff; border-color: #c2410c; }
+button.primary:hover { background: #a8380b; }
+button:disabled { opacity: .6; cursor: default; }
+.status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+.status.err { color: #b91c1c; }
+.status.ok { color: #15803d; }
+#result { margin-top: 10px; }
+.edit {
+  border: 1px solid #e5e5e5; border-left: 3px solid #c2410c;
+  border-radius: 4px; padding: 8px; margin-bottom: 8px; background: #fafafa;
+}
+.edit .reason { color: #666; font-size: 12px; margin-bottom: 4px; }
+.edit .old { color: #b91c1c; text-decoration: line-through; white-space: pre-wrap; }
+.edit .new { color: #15803d; white-space: pre-wrap; }
+.summary { font-weight: 600; margin-bottom: 8px; }

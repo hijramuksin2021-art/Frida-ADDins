@@ -1,0 +1,6 @@
+{
+  "baseUrl": "https://capi.aerolink.lat/",
+  "model": "claude-opus-4-8",
+  "maxTokens": 8000,
+  "port": 3001
+}

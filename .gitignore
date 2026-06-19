@@ -1,0 +1,17 @@
+# Rahasia & konfigurasi lokal
+.env
+.env.*
+!.env.example
+# config.json bisa memuat apiKey sbg fallback -> jangan commit. Pakai config.example.json.
+config.json
+
+# Dependency
+node_modules/
+
+# Log & sementara
+*.log
+tmp/
+.DS_Store
+
+# Sertifikat dev (jika tergenerate di proyek)
+*.pem
