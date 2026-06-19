@@ -526,59 +526,64 @@
   }
 
   // ---- Tool: format_table (write; ubah tampilan tabel yang sudah ada) ----
-  // Pakai Table.getBorder(BorderLocation) — API resmi, tak perlu membuat ulang tabel.
+  // CATATAN: Table.getBorder().type setter melempar InvalidArgument di banyak build
+  // Word desktop (API tak fungsional di sana). Karena itu border diterapkan lewat
+  // OOXML <w:tblBorders> — cara yang andal lintas-build (sama spt set_page_layout).
   async function format_table(context, args) {
     const tables = context.document.body.tables;
     tables.load("items");
     await context.sync();
     const idx = args.tableIndex || 0;
-    const table = tables.items[idx];
+    let table = tables.items[idx];
     if (!table) return { error: "tabel indeks " + idx + " tidak ada" };
 
-    // PENTING: TableBorder.type menuntut literal PascalCase ("Single"), bukan "single"
-    // (lowercase -> InvalidArgument). "Thick" BUKAN BorderType valid -> dipetakan ke Single.
-    const TYPE = { Single: "Single", Double: "Double", Dotted: "Dotted",
-                   Dashed: "Dashed", Triple: "Triple", Thick: "Single" };
-    const type = TYPE[args.borderStyle] || "Single";
-    const width = args.borderWidth || 1;
-    const color = args.borderColor || "#000000";
-
-    // lokasi border memakai literal PascalCase yang diterima getBorder().
-    const setMap = {
-      all: ["Top", "Bottom", "Left", "Right", "InsideHorizontal", "InsideVertical"],
-      outside: ["Top", "Bottom", "Left", "Right"],
-      inside: ["InsideHorizontal", "InsideVertical"],
-      none: ["Top", "Bottom", "Left", "Right", "InsideHorizontal", "InsideVertical"],
-    };
+    // 1) style & header bold via API (ini bekerja). Lakukan SEBELUM baca OOXML
+    //    agar ikut terbawa saat border ditulis ulang lewat OOXML.
+    if (args.style) { try { table.style = args.style; } catch (e) {} }
+    if (args.headerBold) { try { table.getRow(0).font.bold = true; } catch (e) {} }
+    await context.sync();
 
     let bordersApplied = null;
     if (args.borders) {
-      const locs = setMap[args.borders] || setMap.all;
-      locs.forEach((loc) => {
-        try {
-          const b = table.getBorder(loc);
-          if (args.borders === "none") {
-            b.type = "None";
-          } else {
-            b.type = type;        // literal PascalCase -> diterima host
-            b.color = color;
-            b.width = width;
-          }
-        } catch (e) { /* lokasi tak didukung host: lewati */ }
-      });
+      // w:val OOXML = huruf kecil. "Thick" bukan tipe valid -> single.
+      const VAL = { Single: "single", Double: "double", Dotted: "dotted",
+                    Dashed: "dashed", Triple: "triple", Thick: "single" };
+      const val = args.borders === "none" ? "nil" : (VAL[args.borderStyle] || "single");
+      const sz = Math.max(2, Math.round((args.borderWidth || 1) * 8)); // pt -> 1/8 pt
+      const color = (args.borderColor || "#000000").replace("#", "").toUpperCase();
+
+      const range = table.getRange();
+      const o = range.getOoxml();
+      await context.sync();
+      const newXml = applyTblBorders(o.value, args.borders, val, sz, color);
+      range.insertOoxml(newXml, Word.InsertLocation.replace);
+      await context.sync();
       bordersApplied = args.borders;
     }
 
-    if (args.style) {
-      try { table.style = args.style; } catch (e) { /* style tak ada: abaikan */ }
-    }
-    if (args.headerBold) {
-      try { table.getRow(0).font.bold = true; } catch (e) { /* abaikan */ }
-    }
-
-    await context.sync();
     return { ok: true, tableIndex: idx, borders: bordersApplied,
-             style: args.style || null };
+             style: args.style || null, method: bordersApplied ? "ooxml" : "style" };
+  }
+
+  // Sisipkan/ganti <w:tblBorders> di dalam <w:tblPr> pertama dari OOXML tabel.
+  function applyTblBorders(xml, mode, val, sz, color) {
+    const edge = (tag) =>
+      '<w:' + tag + ' w:val="' + val + '" w:sz="' + sz + '" w:space="0" w:color="' + color + '"/>';
+    let edges;
+    if (mode === "inside") edges = [edge("insideH"), edge("insideV")];
+    else if (mode === "outside") edges = ["top", "left", "bottom", "right"].map(edge);
+    else edges = ["top", "left", "bottom", "right"].map(edge)
+                  .concat([edge("insideH"), edge("insideV")]); // all & none
+    const tblBorders = "<w:tblBorders>" + edges.join("") + "</w:tblBorders>";
+
+    // buang tblBorders lama (bila ada), lalu sisipkan setelah <w:tblPr ...>
+    xml = xml.replace(/<w:tblBorders>[\s\S]*?<\/w:tblBorders>/, "");
+    if (/<w:tblPr\s*\/>/.test(xml)) {
+      xml = xml.replace(/<w:tblPr\s*\/>/, "<w:tblPr>" + tblBorders + "</w:tblPr>");
+    } else {
+      xml = xml.replace(/<w:tblPr(\s[^>]*)?>/, (m) => m + tblBorders);
+    }
+    return xml;
   }
 
   // --- util OOXML untuk field TOC ---

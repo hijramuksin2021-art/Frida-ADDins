@@ -646,15 +646,23 @@ Registry 7 → **12 tool**.
   Eksekusi di dokumen nyata perlu dites saat sideload.
 
 ### Catatan Fase 4 — format_table (border tabel yang sudah ada)
-Dari pengujian: FRIDA menolak "buat tabelnya bergaris penuh" karena `create_table` hanya bisa
-memberi style saat MEMBUAT tabel, bukan mengubah tabel yang sudah ada.
-- **`format_table`** (tool ke-17) — ubah tampilan tabel yang SUDAH ADA tanpa membuat ulang:
-  border `all`/`outside`/`inside`/`none` via `Table.getBorder(Word.BorderLocation.*)` (API resmi),
-  jenis/tebal/warna garis, ganti style, tebalkan header. Tidak menyentuh isi/penomoran.
-- **System prompt:** "bergaris penuh/grid/border" pada tabel yang ada → `format_table borders='all'`;
-  `create_table` hanya untuk tabel BARU / teks→tabel.
-- **Verifikasi:** turn-2 nyata "garis di semua sel" pada dokumen 3 tabel → model memanggil
-  `format_table {borders:"all"}` utk ketiga tabel. Parity 17/17.
+FRIDA dulu menolak "buat tabelnya bergaris penuh" karena `create_table` hanya bisa memberi style
+saat MEMBUAT tabel. Ditambah **`format_table`** (tool ke-17): ubah tampilan tabel yang SUDAH ADA
+tanpa membuat ulang — border all/outside/inside/none, jenis/tebal/warna, style, header bold.
+- **PENTING (2 iterasi perbaikan dari sideload):**
+  1) Awalnya pakai `Table.getBorder().type` (API resmi) → `InvalidArgument (TableBorder.type)`.
+     Dugaan pertama casing nilai ("single" vs "Single") — ternyata BUKAN itu.
+  2) Akar sebenarnya: **setter `TableBorder.type` tidak fungsional di build Word desktop pengguna**
+     (lempar InvalidArgument apa pun nilainya). Diganti ke **OOXML `<w:tblBorders>`** via
+     `table.getRange().getOoxml()` → patch → `insertOoxml(replace)`. `w:val` OOXML = HURUF KECIL
+     ("single"/"nil"), `w:sz` = 1/8 pt (1pt→8). Style & header-bold tetap via API (dilakukan
+     sebelum baca OOXML agar ikut terbawa).
+- **System prompt:** "bergaris penuh/grid/border" pada tabel yang ada → `format_table borders='all'`.
+- **Verifikasi:** unit-test transform OOXML (ganti border lama, pertahankan style, tblPr
+  self-closing, none→nil). Eksekusi nyata perlu retest sideload.
+
+> **Pelajaran:** untuk fitur tabel/section, **OOXML lebih andal daripada API border** di build
+> desktop. Pelaporan error `officeErr()` (kode + lokasi) krusial utk mendiagnosis ini.
 
 ### Catatan Fase 4 — batch 3 (TUNTAS, 16 tool)
 Registry 12 → **16 tool**. Fase 4 selesai.
