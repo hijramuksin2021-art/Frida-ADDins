@@ -527,7 +527,7 @@ async function insert_cover_page(context, a) {
 | **1 — Tool registry** | ✅ SELESAI | Registry deklaratif `tools/`; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget`; selfcheck parity | `tools/`, `server.js` |
 | **2 — Agentic loop** | ✅ SELESAI | `/api/agent` relay multi-turn; loop `tool_use`↔`tool_result` di klien; dispatcher via `resolveHandler`; chat UI; read auto / write konfirmasi | `server.js`, `taskpane.*`, `tools/handlers.js` |
 | **3 — Safety core** | ✅ SELESAI | `tools/safety.js`: TransactionManager (snapshot OOXML) + rollback, Undo FRIDA, permission gate per-tool, `riskScore`/`needsConfirm`, AuditLog + panel | `tools/safety.js`, `taskpane.*` |
-| **4 — Tool breadth** | 🟡 BERJALAN | **12 tool**. batch1: set_page_layout, format_paragraph, apply_style, insert_break. batch2: create_table, format_list, manage_header_footer, set_page_numbers, insert_image. Sisa: ToC, comments, track_changes, edit_table | `tools/` |
+| **4 — Tool breadth** | ✅ SELESAI | **16 tool**. b1: set_page_layout, format_paragraph, apply_style, insert_break. b2: create_table, format_list, manage_header_footer, set_page_numbers, insert_image. b3: insert_toc, manage_comments, set_track_changes, edit_table | `tools/` |
 | **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
 | **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
 | **7 — Enterprise** | ⬜ | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
@@ -644,6 +644,18 @@ Registry 7 → **12 tool**.
 - **Verifikasi:** parity 12/12 (selfcheck **72 cek lulus**); agent call NYATA: "tambahkan nomor
   halaman" → `set_page_numbers`; "ubah teks seleksi jadi tabel" → `create_table {fromSelection:true}`.
   Eksekusi di dokumen nyata perlu dites saat sideload.
+
+### Catatan Fase 4 — batch 3 (TUNTAS, 16 tool)
+Registry 12 → **16 tool**. Fase 4 selesai.
+- **`insert_toc`** — Daftar Isi via OOXML TOC field (`fldChar`+`instrText TOC`) ke BODY (andal,
+  beda dgn footer). Pengguna klik kanan → Update Field utk mengisi.
+- **`manage_comments`** — `Range.insertComment` pada target.
+- **`set_track_changes`** — `document.changeTrackingMode` (trackAll/trackMineOnly/off). `off` → risiko +3.
+- **`edit_table`** — pengganti `tableOps` lama FRIDA v1: edit sel, `addRows`, `deleteRowIndices`
+  (hapus dari indeks besar ke kecil). Hapus baris → risiko +3.
+- **Verifikasi:** parity 16/16 (selfcheck **95 cek lulus**); agent call nyata: "aktifkan track
+  changes" → `set_track_changes {trackAll}`; "komentar: tolong revisi" → `manage_comments`;
+  "daftar isi" → outline dulu lalu insert_toc.
 
 ### Catatan Fase 4 — nomor halaman di header (atas)
 Dari pengujian: FRIDA menolak "nomor halaman di tengah atas" karena `set_page_numbers` di-hardcode

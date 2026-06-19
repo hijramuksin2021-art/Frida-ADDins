@@ -70,6 +70,15 @@ if (typeof riskScore === "function") {
   // set_page_layout = replace OOXML penuh -> berisiko
   check(needsConfirm({ name: "set_page_layout", input: { orientation: "landscape" } }),
     "set_page_layout seharusnya perlu konfirmasi", "set_page_layout berisiko");
+  // matikan track changes -> berisiko
+  check(needsConfirm({ name: "set_track_changes", input: { mode: "off" } }),
+    "set_track_changes off seharusnya perlu konfirmasi", "track-off berisiko");
+  // hapus baris tabel -> berisiko
+  check(needsConfirm({ name: "edit_table", input: { deleteRowIndices: [2] } }),
+    "edit_table delete row seharusnya perlu konfirmasi", "hapus baris berisiko");
+  // edit sel tabel biasa -> aman (auto)
+  check(!needsConfirm({ name: "edit_table", input: { cellEdits: [{ r: 0, c: 0, newText: "x" }] } }),
+    "edit_table cellEdits seharusnya tidak perlu konfirmasi", "edit sel aman");
   // kebijakan deny
   Permissions.policy["__danger_test"] = "deny";
   check(Permissions.isBlocked("__danger_test"), "kebijakan deny tidak berlaku");

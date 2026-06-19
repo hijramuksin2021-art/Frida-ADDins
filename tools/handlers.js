@@ -441,6 +441,106 @@
     return { ok: true };
   }
 
+  // ---- Tool: insert_toc (write, OOXML TOC field di body) ----
+  // Tak ada API TOC langsung; sisipkan field TOC via OOXML. Insertion ke BODY andal
+  // (beda dgn footer). Pengguna klik kanan -> Update Field utk mengisi.
+  async function insert_toc(context, args) {
+    const body = context.document.body;
+    const anchor = args.location === "selection"
+      ? context.document.getSelection()
+      : body.getRange(Word.RangeLocation.start);
+    const loc = args.location === "selection"
+      ? Word.InsertLocation.before : Word.InsertLocation.start;
+    if (args.title) {
+      const t = anchor.insertParagraph(args.title, loc);
+      t.styleBuiltIn = Word.BuiltInStyleName.heading1;
+    }
+    body.insertOoxml(tocOoxml(), loc);
+    await context.sync();
+    return { ok: true, note: "Daftar isi disisipkan. Klik kanan -> Update Field untuk mengisi." };
+  }
+
+  // ---- Tool: manage_comments (write) ----
+  async function manage_comments(context, args) {
+    const ranges = await resolveTarget(context, args.target);
+    if (!ranges.length) return { error: "target untuk komentar tak ditemukan" };
+    let n = 0;
+    ranges.forEach((r) => {
+      try { r.insertComment(args.text || ""); n++; } catch (e) { /* host lama: lewati */ }
+    });
+    await context.sync();
+    return { added: n };
+  }
+
+  // ---- Tool: set_track_changes (write/state) ----
+  async function set_track_changes(context, args) {
+    const map = {
+      trackAll: Word.ChangeTrackingMode.trackAll,
+      trackMineOnly: Word.ChangeTrackingMode.trackMineOnly,
+      off: Word.ChangeTrackingMode.off,
+    };
+    const mode = map[args.mode];
+    if (mode === undefined) return { error: "mode tidak valid: " + args.mode };
+    context.document.changeTrackingMode = mode;
+    await context.sync();
+    return { ok: true, mode: args.mode };
+  }
+
+  // ---- Tool: edit_table (write; pengganti tableOps lama) ----
+  async function edit_table(context, args) {
+    const tables = context.document.body.tables;
+    tables.load("items");
+    await context.sync();
+    const idx = args.tableIndex || 0;
+    const table = tables.items[idx];
+    if (!table) return { error: "tabel indeks " + idx + " tidak ada" };
+
+    let cellsEdited = 0, rowsAdded = 0, rowsDeleted = 0;
+
+    // 1) edit isi sel
+    (args.cellEdits || []).forEach((e) => {
+      try {
+        const cell = table.getCell(e.r, e.c);
+        cell.body.clear();
+        cell.body.insertText(e.newText, Word.InsertLocation.start);
+        cellsEdited++;
+      } catch (err) { /* sel di luar jangkauan: lewati */ }
+    });
+
+    // 2) tambah baris di akhir
+    if (Array.isArray(args.addRows) && args.addRows.length) {
+      try {
+        table.addRows(Word.InsertLocation.end, args.addRows.length, args.addRows);
+        rowsAdded = args.addRows.length;
+      } catch (err) { /* abaikan bila gagal */ }
+    }
+
+    // 3) hapus baris — dari indeks BESAR ke kecil agar tak menggeser
+    const dels = (args.deleteRowIndices || []).slice().sort((a, b) => b - a);
+    dels.forEach((ri) => {
+      try { table.getRow(ri).delete(); rowsDeleted++; } catch (err) { /* lewati */ }
+    });
+
+    await context.sync();
+    return { cellsEdited, rowsAdded, rowsDeleted };
+  }
+
+  // --- util OOXML untuk field TOC ---
+  function tocOoxml() {
+    const instr = 'TOC \\\\o "1-3" \\\\h \\\\z \\\\u';
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
+      '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">' +
+      '<pkg:xmlData>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:body><w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> ' + instr + ' </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r><w:t>Klik kanan untuk memperbarui daftar isi.</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:body></w:document>' +
+      '</pkg:xmlData></pkg:part></pkg:package>';
+  }
+
   const HANDLERS = {
     get_document_outline,
     format_text,
@@ -454,6 +554,10 @@
     manage_header_footer,
     set_page_numbers,
     insert_image,
+    insert_toc,
+    manage_comments,
+    set_track_changes,
+    edit_table,
   };
 
   // ---- Pemetaan nama tool yang andal ----

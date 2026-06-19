@@ -306,11 +306,103 @@
     }, ["base64"]),
   };
 
+  // ---- Tool tambahan (Fase 4 batch 3) ----
+
+  const insert_toc = {
+    name: "insert_toc",
+    description:
+      "Sisipkan Daftar Isi (Table of Contents) otomatis berdasarkan paragraf bergaya Heading. " +
+      "Gunakan untuk 'buat daftar isi' / 'tambahkan table of contents'. Daftar isi ini field " +
+      "otomatis; pengguna perlu klik kanan -> Update Field bila heading berubah.",
+    input_schema: {
+      type: "object",
+      properties: {
+        location: {
+          type: "string",
+          enum: ["start", "selection"],
+          default: "start",
+          description: "start = awal dokumen; selection = di posisi kursor/blok aktif.",
+        },
+        title: { type: "string", default: "Daftar Isi", description: "Judul di atas daftar isi." },
+      },
+    },
+  };
+
+  const manage_comments = {
+    name: "manage_comments",
+    description:
+      "Tambahkan komentar (anotasi) pada range target. Gunakan untuk 'beri komentar di sini' / " +
+      "'tandai bagian ini dengan catatan'.",
+    input_schema: withTarget({
+      action: {
+        type: "string",
+        enum: ["add"],
+        default: "add",
+        description: "Saat ini hanya 'add' (menambah komentar).",
+      },
+      text: { type: "string", description: "Isi komentar." },
+    }, ["target", "text"]),
+  };
+
+  const set_track_changes = {
+    name: "set_track_changes",
+    description:
+      "Aktif/nonaktifkan pelacakan perubahan (Track Changes). Gunakan untuk 'aktifkan track changes' " +
+      "atau 'matikan pelacakan perubahan'. MEMATIKAN bersifat sensitif (perubahan tak lagi terlacak).",
+    input_schema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["trackAll", "trackMineOnly", "off"],
+          description: "trackAll = lacak semua; trackMineOnly = hanya milik saya; off = matikan.",
+        },
+      },
+      required: ["mode"],
+    },
+  };
+
+  const edit_table = {
+    name: "edit_table",
+    description:
+      "Edit tabel yang sudah ada: ubah isi sel tertentu, tambah baris, atau hapus baris. " +
+      "Menggantikan kebutuhan merapikan tabel. Pilih tabel via tableIndex (0=tabel pertama).",
+    input_schema: {
+      type: "object",
+      properties: {
+        tableIndex: { type: "integer", default: 0, description: "Indeks tabel di dokumen (0 = pertama)." },
+        cellEdits: {
+          type: "array",
+          description: "Perubahan isi sel. Baris & kolom mulai 0.",
+          items: {
+            type: "object",
+            properties: {
+              r: { type: "integer" }, c: { type: "integer" },
+              newText: { type: "string" },
+            },
+            required: ["r", "c", "newText"],
+          },
+        },
+        addRows: {
+          type: "array",
+          description: "Baris baru yang ditambahkan di akhir tabel; tiap baris array string sel.",
+          items: { type: "array", items: { type: "string" } },
+        },
+        deleteRowIndices: {
+          type: "array",
+          description: "Indeks baris yang dihapus (mulai 0). Dieksekusi dari besar ke kecil.",
+          items: { type: "integer" },
+        },
+      },
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
     set_page_layout, format_paragraph, apply_style, insert_break,
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
+    insert_toc, manage_comments, set_track_changes, edit_table,
   ];
 
   return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS) };

@@ -35,6 +35,7 @@
     if (/delete|clear|remove/i.test(name)) s += 4;         // destruktif
     if (name.indexOf("set_track_changes") >= 0 && a.mode === "off") s += 3;
     if (name.indexOf("set_page_layout") >= 0) s += 3;      // replace OOXML seluruh body
+    if (name.indexOf("edit_table") >= 0 && Array.isArray(a.deleteRowIndices) && a.deleteRowIndices.length) s += 3; // hapus baris
     if (a.target && a.target.occurrence === "all" && a.target.mode === "search") s += 1;
 
     return s;
