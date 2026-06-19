@@ -15,6 +15,16 @@
   </header>
 
   <main>
+    <details id="srcPanel" class="src-panel">
+      <summary>📚 Sumber riset <span id="srcCount" class="src-count"></span></summary>
+      <div id="srcDrop" class="src-drop">
+        Klik atau seret file ke sini — PDF, DOCX, TXT (maks 25MB)
+        <input type="file" id="srcFile" accept=".pdf,.docx,.txt" multiple hidden />
+      </div>
+      <div id="srcStatus" class="src-status"></div>
+      <div id="srcList" class="src-list"></div>
+    </details>
+
     <div id="log" class="log">
       <div class="msg assistant">
         Halo, saya FRIDA. Contoh perintah:<br />
@@ -44,5 +54,6 @@
   <script src="tools/handlers.js"></script>
   <script src="tools/safety.js"></script>
   <script src="taskpane.js"></script>
+  <script src="sources-ui.js"></script>
 </body>
 </html>

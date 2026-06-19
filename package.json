@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "jimp": "^1.6.1",
-    "office-addin-dev-certs": "^1.13.0"
+    "mammoth": "^1.12.0",
+    "office-addin-dev-certs": "^1.13.0",
+    "pdf-parse": "^2.4.5"
   }
 }

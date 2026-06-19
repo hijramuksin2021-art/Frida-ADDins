@@ -90,3 +90,25 @@ button:disabled { opacity: .6; cursor: default; }
 
 .composer { margin-top: 10px; }
 .composer textarea { font-size: 13px; }
+
+/* ---- Panel Sumber (Research Copilot R0) ---- */
+.src-panel { border: 1px solid #eee; border-radius: 8px; padding: 8px 10px; margin: 8px 0; background: #fafafa; }
+.src-panel summary { cursor: pointer; font-weight: 600; font-size: 13px; color: #c2410c; }
+.src-count { color: #888; font-weight: 400; font-size: 12px; }
+.src-drop {
+  margin-top: 8px; border: 1.5px dashed #d1c4b0; border-radius: 8px; padding: 14px 10px;
+  text-align: center; color: #8a7a66; font-size: 12px; cursor: pointer; background: #fff;
+}
+.src-drop.over { border-color: #c2410c; background: #fff7ed; color: #c2410c; }
+.src-status { font-size: 12px; margin: 6px 0; min-height: 16px; }
+.src-status.ok { color: #15803d; }
+.src-status.err { color: #b91c1c; }
+.src-list { margin-top: 4px; }
+.src-empty { color: #999; font-size: 12px; padding: 6px 2px; }
+.src-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid #eee; }
+.src-main { flex: 1; min-width: 0; }
+.src-title { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.src-meta { font-size: 11px; color: #888; }
+.src-warn { font-size: 10px; color: #92400e; background: #fef3c7; border-radius: 4px; padding: 0 4px; font-weight: 400; }
+.src-del { width: auto; margin: 0; padding: 2px 7px; font-size: 12px; border-radius: 4px; background: #fff; color: #b91c1c; border-color: #f0d0d0; }
+.src-del:hover { background: #fef2f2; }

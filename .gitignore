@@ -13,5 +13,8 @@ node_modules/
 tmp/
 .DS_Store
 
+# Data Research Copilot (sumber terunggah & KB) — jangan commit dokumen pengguna
+data/
+
 # Sertifikat dev (jika tergenerate di proyek)
 *.pem

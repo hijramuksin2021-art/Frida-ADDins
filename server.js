@@ -15,6 +15,11 @@ const devCerts = require("office-addin-dev-certs");
 // Endpoint agentic yang memakainya menyusul di Fase 2; di sini cukup dimuat & dilaporkan.
 const { SCHEMAS: TOOL_SCHEMAS } = require("./tools/schemas");
 
+// Research Copilot / RAG (R0) — ingestion sumber + status embeddings provider.
+const ingest = require("./rag/ingest");
+const sourceStore = require("./rag/store");
+const embeddings = require("./rag/embeddings");
+
 // ---- konfigurasi: env DULU, lalu config.json sbg fallback (nilai non-rahasia) ----
 // API key TIDAK boleh disimpan di config.json yang ter-commit. Taruh di .env / env OS.
 // Loader .env mini (tanpa dependency tambahan): KEY=VALUE per baris, # = komentar.
@@ -296,6 +301,47 @@ function handleAgent(req, res) {
 }
 // =====================================================================
 
+// ===================== Research Copilot R0: /api/sources =====================
+function readBody(req) {
+  return new Promise((resolve) => {
+    let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => resolve(b));
+  });
+}
+function sendJson(res, code, obj) {
+  res.writeHead(code, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(obj));
+}
+
+async function handleSources(req, res) {
+  const url = req.url.split("?")[0];
+  try {
+    // POST /api/sources/upload  { filename, mime, dataBase64, workspace }
+    if (req.method === "POST" && url === "/api/sources/upload") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const result = await ingest.ingestUpload(body);
+      return sendJson(res, 200, result);
+    }
+    // GET /api/sources  -> daftar KB
+    if (req.method === "GET" && url === "/api/sources") {
+      const ws = (req.url.split("?")[1] || "").match(/workspace=([^&]+)/);
+      return sendJson(res, 200, { sources: sourceStore.list(ws ? decodeURIComponent(ws[1]) : null) });
+    }
+    // GET /api/sources/embed-status -> status provider embeddings (tanpa key)
+    if (req.method === "GET" && url === "/api/sources/embed-status") {
+      return sendJson(res, 200, embeddings.status());
+    }
+    // DELETE /api/sources/:id
+    if (req.method === "DELETE" && /^\/api\/sources\/[\w-]+$/.test(url)) {
+      const id = url.split("/").pop();
+      return sendJson(res, 200, { removed: sourceStore.remove(id) });
+    }
+    return sendJson(res, 404, { error: "rute sumber tidak dikenal" });
+  } catch (err) {
+    return sendJson(res, 500, { error: String(err.message || err) });
+  }
+}
+// =============================================================================
+
 async function handleEdit(req, res) {
   let body = "";
   req.on("data", c => (body += c));
@@ -338,6 +384,7 @@ async function handleEdit(req, res) {
 
   https
     .createServer(httpsOptions, (req, res) => {
+      if (req.url.startsWith("/api/sources")) return handleSources(req, res);
       if (req.method === "POST" && req.url.startsWith("/api/agent")) return handleAgent(req, res);
       if (req.method === "POST" && req.url.startsWith("/api/edit")) return handleEdit(req, res);
       if (req.method === "GET") return serveStatic(req, res);
