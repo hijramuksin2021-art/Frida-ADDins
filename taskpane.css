@@ -64,8 +64,27 @@ button:disabled { opacity: .6; cursor: default; }
 .tool .tnote.ok { color: #15803d; }
 .tool .tnote.err { color: #b91c1c; }
 
-.confirm { display: flex; gap: 8px; margin: 0 0 10px; }
-.confirm button { margin-top: 0; }
+.confirm { margin: 0 0 10px; }
+.confirm .risk {
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; margin-bottom: 6px;
+}
+.confirm-btns { display: flex; gap: 8px; }
+.confirm-btns button { margin-top: 0; }
+
+.undo {
+  margin-top: 8px; background: #fff; border: 1px solid #c2410c; color: #c2410c;
+}
+.undo:hover { background: #fff7ed; }
+
+.audit { margin-top: 8px; }
+.audit .audit-h { font-size: 11.5px; font-weight: 600; color: #666; margin-bottom: 3px; }
+.audit .audit-row {
+  font-size: 11.5px; padding: 2px 6px; border-left: 2px solid #d1d5db;
+  margin: 2px 0; color: #444; white-space: pre-wrap;
+}
+.audit .audit-row.ok { border-left-color: #15803d; }
+.audit .audit-row.err { border-left-color: #b91c1c; color: #b91c1c; }
 
 .composer { margin-top: 10px; }
 .composer textarea { font-size: 13px; }

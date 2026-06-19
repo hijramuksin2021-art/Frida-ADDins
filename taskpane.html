@@ -25,6 +25,8 @@
     </div>
 
     <div id="status" class="status"></div>
+    <button id="undo" class="undo" style="display:none">↩️ Undo perubahan terakhir</button>
+    <div id="audit" class="audit"></div>
 
     <div class="composer">
       <textarea id="instruction" rows="3"
@@ -34,9 +36,11 @@
     </div>
   </main>
 
-  <!-- Registry tool (sumber kebenaran bersama dgn server). Muat SEBELUM taskpane.js. -->
+  <!-- Registry tool + lapisan keselamatan (sumber kebenaran bersama dgn server). -->
+  <!-- Muat SEBELUM taskpane.js. -->
   <script src="tools/schemas.js"></script>
   <script src="tools/handlers.js"></script>
+  <script src="tools/safety.js"></script>
   <script src="taskpane.js"></script>
 </body>
 </html>

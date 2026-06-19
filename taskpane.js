@@ -25,17 +25,22 @@ function isReadTool(name) { return READ_TOOLS.has(canonName(name)); }
 
 let messages = []; // riwayat percakapan untuk LLM
 let running = false;
+let audit = null;          // FRIDA_SAFETY.makeAuditLog()
+let lastSnapshot = null;   // OOXML sebelum perintah terakhir (untuk Undo FRIDA)
 
 Office.onReady((info) => {
   if (info.host !== Office.HostType.Word) {
     setStatus("FRIDA hanya untuk Microsoft Word.", "err");
     return;
   }
-  if (!window.FRIDA_HANDLERS || !window.FRIDA_SCHEMAS) {
-    setStatus("Registry tool gagal dimuat (tools/schemas.js & handlers.js).", "err");
+  if (!window.FRIDA_HANDLERS || !window.FRIDA_SCHEMAS || !window.FRIDA_SAFETY) {
+    setStatus("Registry tool gagal dimuat (tools/schemas.js, handlers.js, safety.js).", "err");
     return;
   }
+  audit = window.FRIDA_SAFETY.makeAuditLog();
   document.getElementById("send").onclick = onSend;
+  const undoBtn = document.getElementById("undo");
+  if (undoBtn) undoBtn.onclick = onUndo;
   document.getElementById("instruction").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSend(); }
   });
@@ -112,12 +117,26 @@ async function runAgentLoop() {
     const toolUses = content.filter((b) => b.type === "tool_use");
     if (toolUses.length === 0) return; // jawaban akhir -> selesai
 
-    // ada write tool? -> tahan untuk konfirmasi
+    const { needsConfirm, Permissions } = window.FRIDA_SAFETY;
+
+    // Blokir aksi yang kebijakannya 'deny'.
+    const blocked = toolUses.filter((t) => Permissions.isBlocked(canonName(t.name)));
+    if (blocked.length) {
+      messages.push({ role: "user", content: blocked.map((t) => ({
+        type: "tool_result", tool_use_id: t.id, is_error: true,
+        content: "Ditolak kebijakan keamanan: " + canonName(t.name),
+      })) });
+      addBubble("error", "Aksi diblokir kebijakan: " + blocked.map((t) => canonName(t.name)).join(", "));
+      // sisanya yang tak diblokir tetap diproses di iterasi berikut; di sini berhenti utk aman
+      return;
+    }
+
+    // Konfirmasi berbasis RISIKO (bukan semua write). Read & write aman -> jalan otomatis.
+    const risky = toolUses.filter((t) => needsConfirm({ name: canonName(t.name), input: t.input }));
     const hasWrite = toolUses.some((t) => !isReadTool(t.name));
-    if (hasWrite) {
-      const okGo = await confirmBatch(toolUses);
+    if (risky.length) {
+      const okGo = await confirmBatch(toolUses, risky);
       if (!okGo) {
-        // user batal: balas tool_result error agar model berhenti/menyesuaikan
         messages.push({ role: "user", content: toolUses.map((t) => ({
           type: "tool_result", tool_use_id: t.id, is_error: true,
           content: "Dibatalkan oleh pengguna.",
@@ -126,35 +145,61 @@ async function runAgentLoop() {
         return;
       }
     } else {
-      renderToolCalls(toolUses, "membaca dokumen…");
+      renderToolCalls(toolUses, hasWrite ? "menerapkan…" : "membaca dokumen…");
     }
 
     setStatus("FRIDA menjalankan " + toolUses.length + " aksi…");
-    const results = await executeToolUses(toolUses);
+    const results = await executeToolUses(toolUses, hasWrite);
     messages.push({ role: "user", content: results });
+    if (hasWrite) renderAudit();
   }
   addBubble("error", "Batas langkah tercapai (" + MAX_STEPS + ").");
 }
 
 // Eksekusi satu batch tool_use dalam SATU Word.run -> array tool_result.
-async function executeToolUses(toolUses) {
+// isWrite=true: ambil snapshot OOXML dulu (TransactionManager); bila ada kegagalan
+// di tengah batch -> rollback seluruh batch agar dokumen tidak setengah jadi.
+async function executeToolUses(toolUses, isWrite) {
   const { resolveHandler } = window.FRIDA_HANDLERS;
+  const { TransactionManager } = window.FRIDA_SAFETY;
   const results = [];
+  let anyError = false;
+
   await Word.run(async (context) => {
+    const tx = isWrite ? await TransactionManager.begin(context) : null;
+
     for (const tu of toolUses) {
-      const resolved = resolveHandler(tu.name); // tahan nama yang di-rename provider
+      const resolved = resolveHandler(tu.name);
       if (!resolved) {
         results.push(toolResult(tu.id, { error: "tool tidak dikenal: " + tu.name }, true));
+        markToolDone(tu.id, { error: "tidak dikenal" }, true);
+        audit && audit.record({ name: tu.name, input: tu.input }, { error: "tidak dikenal" }, true);
+        anyError = true;
         continue;
       }
       try {
         const out = await resolved.fn(context, tu.input || {});
         results.push(toolResult(tu.id, out, false));
         markToolDone(tu.id, out);
+        audit && audit.record({ name: resolved.name, input: tu.input }, out, false);
       } catch (e) {
         const msg = (e && e.message) || String(e);
         results.push(toolResult(tu.id, { error: msg }, true));
         markToolDone(tu.id, { error: msg }, true);
+        audit && audit.record({ name: resolved.name, input: tu.input }, { error: msg }, true);
+        anyError = true;
+      }
+    }
+
+    if (tx) {
+      if (anyError) {
+        // batch write gagal sebagian -> kembalikan ke kondisi sebelum batch
+        await tx.rollback();
+        addBubble("error", "Sebagian aksi gagal — perubahan batch ini dibatalkan (rollback).");
+      } else {
+        // batch sukses: simpan snapshot SEBELUM batch sbg titik Undo FRIDA
+        lastSnapshot = tx.snapshot;
+        showUndo(true);
       }
     }
   });
@@ -166,22 +211,67 @@ function toolResult(id, obj, isError) {
            content: JSON.stringify(obj) };
 }
 
-// ---------- render kartu tool ----------
-function confirmBatch(toolUses) {
+// ---------- konfirmasi & undo & audit ----------
+function confirmBatch(toolUses, risky) {
   renderToolCalls(toolUses, "menunggu konfirmasi…");
+  const riskNames = (risky || []).map((t) => canonName(t.name));
   return new Promise((resolve) => {
     const wrap = document.createElement("div");
     wrap.className = "confirm";
+    if (riskNames.length) {
+      const warn = document.createElement("div");
+      warn.className = "risk";
+      warn.textContent = "⚠️ Aksi berisiko: " + riskNames.join(", ") +
+        ". Periksa dulu sebelum menjalankan.";
+      wrap.appendChild(warn);
+    }
+    const btns = document.createElement("div");
+    btns.className = "confirm-btns";
     const yes = document.createElement("button");
     yes.className = "primary"; yes.textContent = "Jalankan " + toolUses.length + " aksi";
     const no = document.createElement("button");
     no.textContent = "Batal";
     yes.onclick = () => { wrap.remove(); resolve(true); };
     no.onclick = () => { wrap.remove(); resolve(false); };
-    wrap.appendChild(yes); wrap.appendChild(no);
+    btns.appendChild(yes); btns.appendChild(no);
+    wrap.appendChild(btns);
     logEl().appendChild(wrap);
     scrollDown();
   });
+}
+
+function showUndo(on) {
+  const btn = document.getElementById("undo");
+  if (btn) btn.style.display = on ? "block" : "none";
+}
+
+async function onUndo() {
+  if (running || lastSnapshot == null) return;
+  busy(true);
+  setStatus("Mengembalikan dokumen…");
+  try {
+    await window.FRIDA_SAFETY.TransactionManager.restore(lastSnapshot);
+    addBubble("assistant", "↩️ Dokumen dikembalikan ke kondisi sebelum perubahan terakhir.");
+    lastSnapshot = null;
+    showUndo(false);
+    setStatus("Dikembalikan.", "ok");
+  } catch (err) {
+    setStatus("Gagal undo: " + (err.message || err), "err");
+  } finally {
+    busy(false);
+  }
+}
+
+function renderAudit() {
+  const box = document.getElementById("audit");
+  if (!box || !audit) return;
+  const rows = audit.entries.slice(-8).reverse();
+  if (!rows.length) { box.innerHTML = ""; return; }
+  box.innerHTML = "<div class='audit-h'>Riwayat aksi</div>" +
+    rows.map((e) =>
+      "<div class='audit-row " + (e.ok ? "ok" : "err") + "'>" +
+      escapeHtml(e.tool) + " — " + escapeHtml(e.result || (e.ok ? "ok" : "gagal")) +
+      "</div>").join("");
 }
 
 function renderToolCalls(toolUses, note) {

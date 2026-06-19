@@ -526,8 +526,8 @@ async function insert_cover_page(context, a) {
 | **0 — Hardening** | ✅ SELESAI | Key → env, `.env`/`.env.example`, `.gitignore`, path guard, git init | `config.json`, `server.js` |
 | **1 — Tool registry** | ✅ SELESAI | Registry deklaratif `tools/`; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget`; selfcheck parity | `tools/`, `server.js` |
 | **2 — Agentic loop** | ✅ SELESAI | `/api/agent` relay multi-turn; loop `tool_use`↔`tool_result` di klien; dispatcher via `resolveHandler`; chat UI; read auto / write konfirmasi | `server.js`, `taskpane.*`, `tools/handlers.js` |
-| **3 — Safety core** | ⬜ Berikutnya | TransactionManager (snapshot OOXML), rollback, Undo, permission gate per-tool, riskScore | baru |
-| **4 — Tool breadth** | ⬜ | Lengkapi 18 tool | baru |
+| **3 — Safety core** | ✅ SELESAI | `tools/safety.js`: TransactionManager (snapshot OOXML) + rollback, Undo FRIDA, permission gate per-tool, `riskScore`/`needsConfirm`, AuditLog + panel | `tools/safety.js`, `taskpane.*` |
+| **4 — Tool breadth** | ⬜ Berikutnya | Lengkapi tool (paragraph, style, header/footer, **page layout/orientasi**, break, table, image, list, ToC, comments, track changes) | baru |
 | **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
 | **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
 | **7 — Enterprise** | ⬜ | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
@@ -581,6 +581,32 @@ async function insert_cover_page(context, a) {
 - **Verifikasi end-to-end:** server boot OK; `/tools/*.js` tersaji (200), `.env` ditolak (403);
   `/api/agent` validasi input (400) dan panggilan nyata mengembalikan `stop_reason: tool_use`
   dengan model memilih `get_document_outline` lebih dulu (alur outline-first bekerja).
+
+### Catatan Fase 3 (apa yang berubah)
+- **`tools/safety.js`** (modul baru, dual-mode). Bagian PURE (diuji di Node):
+  - `riskScore(toolUse)` — skor risiko; whole_document/replace-all/delete/track-off menaikkan skor.
+    Implicit-whole-doc (mis. `replace_text` tanpa `target`) dihitung sbg seluruh dokumen.
+  - `needsConfirm(toolUse)` — gabungan kebijakan + skor (ambang ≥3).
+  - `Permissions` — kebijakan per-tool (`allow`/`confirm`/`deny`/`auto`) + pola `prefix_*` & `*`.
+  - `makeAuditLog()` — pencatat append-only (tool, input, ok, ringkas hasil).
+  Bagian butuh Word: `TransactionManager.begin(context)` ambil snapshot OOXML (`body.getOoxml`);
+  `rollback()`/`restore(snapshot)` mengembalikan via `clear` + `insertOoxml`. Di Node = no-op.
+- **`taskpane.js`** — terintegrasi safety:
+  - Konfirmasi kini **berbasis risiko**, bukan "semua write". Read & write aman jalan otomatis;
+    hanya aksi `needsConfirm` yang menahan + menampilkan banner ⚠️ aksi berisiko.
+  - Batch write dieksekusi di atas **snapshot** (`TransactionManager.begin`). Bila ADA kegagalan
+    di tengah batch → **rollback otomatis** seluruh batch (dokumen tak setengah jadi).
+  - Batch sukses → snapshot disimpan sbg titik **Undo FRIDA**; tombol Undo memanggil `restore`.
+  - Setiap aksi tercatat di **AuditLog**; panel "Riwayat aksi" menampilkan 8 terakhir.
+  - Kebijakan `deny` memblokir aksi & membalas `tool_result is_error`.
+- **`taskpane.html` / `.css`** — tombol "↩️ Undo perubahan terakhir" (muncul setelah write
+  sukses) + panel `#audit`. Memuat `tools/safety.js` sebelum `taskpane.js`.
+- **`tools/selfcheck.js`** — tambah uji regresi safety (riskScore read=0, format-selection aman,
+  whole_document berisiko, replace-all perlu konfirmasi, kebijakan deny, AuditLog mencatat).
+  Total **26 cek lulus**.
+- **Verifikasi:** semua file `node -c` OK; globals browser (`FRIDA_SAFETY`) ter-set; `begin()` di
+  Node no-op; server boot & menyajikan `/tools/safety.js` (200). Eksekusi rollback/Undo nyata
+  butuh host Word (tak bisa diuji headless) — logikanya lurus: snapshot OOXML lalu `insertOoxml`.
 
 > **PENTING (rotasi key):** key lama sempat tersimpan plaintext di `config.json`. Karena belum
 > pernah ter-commit ke git (repo baru di-init bersih), risikonya terbatas pada mesin lokal. Tetap

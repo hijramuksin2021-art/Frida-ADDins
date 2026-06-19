@@ -8,6 +8,7 @@
 
 const { SCHEMAS } = require("./schemas");
 const { HANDLERS, resolveTarget, resolveHandler } = require("./handlers");
+const { riskScore, needsConfirm, Permissions, makeAuditLog } = require("./safety");
 
 const problems = [];
 const ok = [];
@@ -49,6 +50,32 @@ if (typeof resolveHandler === "function") {
   check(resolveHandler("totally_unknown_xyz") === null,
     "resolveHandler salah memetakan nama yang tak dikenal", "resolveHandler menolak nama tak dikenal");
 }
+
+// 6) safety: riskScore & permissions (regresi Fase 3)
+check(typeof riskScore === "function", "riskScore hilang dari safety");
+if (typeof riskScore === "function") {
+  // read = 0 risiko
+  check(riskScore({ name: "get_document_outline", input: {} }) === 0,
+    "get_document_outline seharusnya risiko 0", "read tool risiko 0");
+  // format pada seleksi = aman (tak perlu konfirmasi)
+  check(!needsConfirm({ name: "format_text", input: { target: { mode: "selection" }, bold: true } }),
+    "format_text pada selection seharusnya tidak perlu konfirmasi",
+    "format selection tanpa konfirmasi");
+  // format seluruh dokumen = berisiko (>=3)
+  check(riskScore({ name: "format_text", input: { target: { mode: "whole_document" } } }) >= 3,
+    "format_text whole_document seharusnya risiko >=3", "whole_document berisiko");
+  // replace_text tanpa target (default seluruh dok) = perlu konfirmasi
+  check(needsConfirm({ name: "replace_text", input: { find: "A", replace: "B" } }),
+    "replace_text seluruh dokumen seharusnya perlu konfirmasi", "replace-all perlu konfirmasi");
+  // kebijakan deny
+  Permissions.policy["__danger_test"] = "deny";
+  check(Permissions.isBlocked("__danger_test"), "kebijakan deny tidak berlaku");
+  delete Permissions.policy["__danger_test"];
+}
+// audit log mencatat
+const a = makeAuditLog();
+a.record({ name: "format_text", input: {} }, { applied: 3 }, false);
+check(a.entries.length === 1 && a.entries[0].ok === true, "AuditLog gagal mencatat entri");
 
 // laporan
 console.log(`FRIDA tool registry selfcheck`);
