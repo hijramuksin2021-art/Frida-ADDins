@@ -415,9 +415,9 @@
         },
         borderStyle: {
           type: "string",
-          enum: ["Single", "Double", "Dotted", "Dashed", "Thick"],
+          enum: ["Single", "Double", "Dotted", "Dashed", "Triple"],
           default: "Single",
-          description: "Jenis garis.",
+          description: "Jenis garis (nilai PascalCase).",
         },
         borderWidth: { type: "number", default: 1, description: "Tebal garis (pt)." },
         borderColor: { type: "string", description: "Warna garis hex #RRGGBB (default hitam)." },

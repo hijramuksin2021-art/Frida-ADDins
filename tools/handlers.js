@@ -535,33 +535,34 @@
     const table = tables.items[idx];
     if (!table) return { error: "tabel indeks " + idx + " tidak ada" };
 
-    const type = args.borderStyle || "Single";
+    // PENTING: TableBorder.type menuntut literal PascalCase ("Single"), bukan "single"
+    // (lowercase -> InvalidArgument). "Thick" BUKAN BorderType valid -> dipetakan ke Single.
+    const TYPE = { Single: "Single", Double: "Double", Dotted: "Dotted",
+                   Dashed: "Dashed", Triple: "Triple", Thick: "Single" };
+    const type = TYPE[args.borderStyle] || "Single";
     const width = args.borderWidth || 1;
     const color = args.borderColor || "#000000";
 
-    // peta pilihan -> lokasi border yg perlu di-set
-    const LOC = Word.BorderLocation;
+    // lokasi border memakai literal PascalCase yang diterima getBorder().
     const setMap = {
-      all: ["top", "bottom", "left", "right", "insideHorizontal", "insideVertical"],
-      outside: ["top", "bottom", "left", "right"],
-      inside: ["insideHorizontal", "insideVertical"],
-      none: ["top", "bottom", "left", "right", "insideHorizontal", "insideVertical"],
+      all: ["Top", "Bottom", "Left", "Right", "InsideHorizontal", "InsideVertical"],
+      outside: ["Top", "Bottom", "Left", "Right"],
+      inside: ["InsideHorizontal", "InsideVertical"],
+      none: ["Top", "Bottom", "Left", "Right", "InsideHorizontal", "InsideVertical"],
     };
 
     let bordersApplied = null;
     if (args.borders) {
       const locs = setMap[args.borders] || setMap.all;
-      locs.forEach((name) => {
-        const loc = LOC[name];
-        if (loc === undefined) return;
+      locs.forEach((loc) => {
         try {
           const b = table.getBorder(loc);
           if (args.borders === "none") {
-            b.type = Word.BorderType.none;
+            b.type = "None";
           } else {
-            b.type = Word.BorderType[lc(type)] || Word.BorderType.single;
-            b.width = width;
+            b.type = type;        // literal PascalCase -> diterima host
             b.color = color;
+            b.width = width;
           }
         } catch (e) { /* lokasi tak didukung host: lewati */ }
       });
@@ -579,8 +580,6 @@
     return { ok: true, tableIndex: idx, borders: bordersApplied,
              style: args.style || null };
   }
-  // huruf pertama kecil (enum BorderType: single/double/dotted/dashed/thick)
-  function lc(s) { return String(s || "").charAt(0).toLowerCase() + String(s || "").slice(1); }
 
   // --- util OOXML untuk field TOC ---
   function tocOoxml() {
