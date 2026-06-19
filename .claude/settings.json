@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c *)",
+      "Bash(node --check *)",
+      "Bash(npm run check)"
+    ]
+  }
+}

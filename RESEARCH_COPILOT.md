@@ -221,7 +221,7 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 |---|---|---|
 | **R0** | Ingestion: upload PDF/DOCX/TXT → parse → file store; panel Sumber + daftar KB; provider config embeddings | ✅ SELESAI |
 | **R1** | Chunk + embed (lokal Xenova multilingual + remote pluggable) + vector store file + search_uploaded_sources + agent loop server/client | ✅ SELESAI |
-| **R2** | generate_paragraph_from_source + gate + atribusi + traceability | ⬜ |
+| **R2** | generate_paragraph_from_source + gate (skor retrieval) + verifikasi sitasi (primer/warisan, buang yang dikarang) + insert_paragraph | ✅ SELESAI |
 | **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ⬜ |
 | **R4** | resolve_source/alias, summarize_source, compare_sources | ⬜ |
 | **R5** | Gaya MLA/Chicago/Harvard/IEEE, footnote, update-all via content control | ⬜ |
@@ -248,6 +248,22 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 - **Verifikasi nyata:** unggah sumber → "cari di sumber: kenapa reptil berdarah dingin?" →
   server jalankan `search_uploaded_sources`, model menjawab **grounded** dari kutipan (ektotermik,
   bergantung lingkungan) tanpa mengarang; perintah Word biasa tetap kembali ke klien.
+
+## R2 — Catatan implementasi
+- **`generate_paragraph_from_source`** (server tool): search → GATE → generasi grounded → verifikasi.
+- **GATE = skor retrieval (deterministik), bukan judgment model.** Pelajaran: memberi model opsi
+  `needsMoreEvidence` + prompt anti-halusinasi yang panjang membuatnya SELALU menolak (skor 0.76 pun
+  ditolak). Solusi: tool model hanya `{paragraph}` (wajib); "bukti tak cukup" ditentukan server bila
+  retrieval tak menghasilkan chunk di atas ambang (cosine ≥ 0.3). Einstein vs dok agroforestri →
+  similarity negatif → ditolak server (model tak dipanggil).
+- **Sitasi primer vs warisan (sesuai permintaan pengguna):** prompt MEMPERTAHANKAN sitasi in-text
+  yang ada di passage (mis. `(Nair, 2012)`) = sitasi warisan dari sumber asli; klaim tanpa sitasi
+  in-text = milik dokumen (sitasi primer). `rag/citations.js` mengekstrak & **memverifikasi** tiap
+  sitasi terhadap chunk; yang TAK ada di sumber (mis. `(Hantu, 1999)` palsu) **dibuang** dari paragraf.
+- **`rag/llm.js`**: pemanggil model server-side (forced tool) + self-load `.env`.
+- **Verifikasi nyata:** "tambahkan paragraf manfaat agroforestri berdasarkan jurnal" → server
+  generate (grounded, `(Nair, 2012)` terverifikasi & dipertahankan) → agent `insert_paragraph`.
+  Sitasi PRIMER (format APA/dll dari metadata dokumen) menyusul di R3.
 
 ## 17. Scalability
 1. Store pluggable (`VectorStore` interface): sqlite-vec → pgvector/Qdrant.

@@ -5,6 +5,7 @@
 const store = require("./store");
 const vectors = require("./vectors");
 const embeddings = require("./embeddings");
+const { generate_paragraph_from_source } = require("./generate");
 
 const MAX_CHUNK_CHARS = 700; // batasi teks per hit agar hemat token
 
@@ -41,7 +42,7 @@ async function search_uploaded_sources(input) {
   };
 }
 
-const SERVER_TOOLS = { search_uploaded_sources };
+const SERVER_TOOLS = { search_uploaded_sources, generate_paragraph_from_source };
 
 // Eksekusi satu tool server berdasarkan nama (sudah dikanonikkan oleh pemanggil).
 async function executeServerTool(name, input) {

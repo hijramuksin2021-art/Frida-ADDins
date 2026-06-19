@@ -513,6 +513,27 @@
     },
   };
 
+  const generate_paragraph_from_source = {
+    name: "generate_paragraph_from_source",
+    runtime: "server",
+    description:
+      "Tulis paragraf akademik yang BENAR-BENAR DIDUKUNG dokumen terunggah (grounded). " +
+      "Gunakan saat diminta 'tambahkan/buat paragraf tentang X berdasarkan sumber/jurnal'. " +
+      "Tool ini mencari sendiri kutipan relevan, menolak menulis bila bukti tak cukup " +
+      "(needsMoreEvidence), MEMPERTAHANKAN sitasi in-text dari sumber (sitasi warisan), dan " +
+      "MEMVERIFIKASI sitasi (yang tak ada di sumber dibuang). Setelah dapat paragraf, sisipkan " +
+      "ke dokumen dengan insert_paragraph. JANGAN menulis sendiri paragraf berbasis sumber tanpa tool ini.",
+    input_schema: {
+      type: "object",
+      properties: {
+        instruction: { type: "string", description: "Apa yang harus ditulis (mis. 'manfaat ekonomi agroforestri')." },
+        source_query: { type: "string", description: "Kata kunci pencarian sumber (opsional; default = instruction)." },
+        document_ids: { type: "array", items: { type: "string" }, description: "Batasi ke sumber tertentu (opsional)." },
+      },
+      required: ["instruction"],
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
@@ -520,7 +541,7 @@
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
     insert_cover_page, format_business_proposal,
-    search_uploaded_sources,
+    search_uploaded_sources, generate_paragraph_from_source,
   ];
 
   // Pencocokan nama tahan-rename (provider kadang mengubah nama tool di respons).
