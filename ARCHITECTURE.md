@@ -529,8 +529,8 @@ async function insert_cover_page(context, a) {
 | **3 — Safety core** | ✅ SELESAI | `tools/safety.js`: TransactionManager (snapshot OOXML) + rollback, Undo FRIDA, permission gate per-tool, `riskScore`/`needsConfirm`, AuditLog + panel | `tools/safety.js`, `taskpane.*` |
 | **4 — Tool breadth** | ✅ SELESAI | **17 tool**. b1: set_page_layout, format_paragraph, apply_style, insert_break. b2: create_table, format_list, manage_header_footer, set_page_numbers, insert_image. b3: insert_toc, manage_comments, set_track_changes, edit_table. +format_table (border tabel) | `tools/` |
 | **5 — Preview/diff** | ✅ SELESAI | `previewTool` (estimasi dampak read-only) + toggle "Tinjau dampak"; kartu konfirmasi menampilkan dampak nyata sebelum eksekusi | `tools/handlers.js`, `taskpane.*` |
-| **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
-| **7 — Enterprise** | ⬜ | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
+| **6 — Composite & polish** | ✅ SELESAI | `insert_cover_page` + `format_business_proposal` (orkestrasi tool). Tool router DITUNDA (baru 19 tool; perlu >30). Audit panel sudah di Fase 3 | `tools/` |
+| **7 — Enterprise** | ⬜ (opsional) | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
 
 ### Catatan Fase 0 (apa yang berubah)
 - `server.js`: loader `.env` mini (tanpa dependency baru), `cfg` dari env → fallback `config.json`,
@@ -644,6 +644,26 @@ Registry 7 → **12 tool**.
 - **Verifikasi:** parity 12/12 (selfcheck **72 cek lulus**); agent call NYATA: "tambahkan nomor
   halaman" → `set_page_numbers`; "ubah teks seleksi jadi tabel" → `create_table {fromSelection:true}`.
   Eksekusi di dokumen nyata perlu dites saat sideload.
+
+### Catatan Fase 6 — Composite & polish (ROADMAP INTI SELESAI, 19 tool)
+Tool tingkat-tinggi yang merangkai banyak aksi jadi satu perintah.
+- **`insert_cover_page`** — judul (Title style, center), subtitle, instansi, penulis, tanggal,
+  lalu page break. Menyisip dari START (urutan terbalik) agar isi lama bergeser turun.
+- **`format_business_proposal`** — orkestrasi handler lain dalam satu Word.run. **URUTAN KRUSIAL:**
+  `set_page_layout` (replace OOXML body) dijalankan PALING AWAL, baru warnai heading
+  (`format_text` target heading), nomor halaman, lalu opsional cover. Kalau layout tidak duluan,
+  langkah lain akan terhapus oleh OOXML replace.
+- Keduanya berisiko (+3 riskScore) → selalu lewat pratinjau/konfirmasi.
+- **Tool router DITUNDA** (sengaja, YAGNI): kirim-semua-schema masih murah pada 19 tool; router
+  per-kategori baru relevan >30 tool (ARCHITECTURE §9.2).
+- **Verifikasi agent nyata:** "buatkan halaman sampul …" → `insert_cover_page` (judul/penulis/
+  tahun terisi dari konteks, 1 panggilan); "format jadi proposal bisnis" → baca dokumen lalu
+  `format_business_proposal {accentColor}` (1 panggilan, tak diurai jadi tool kecil). Parity 19/19,
+  selfcheck **113 cek lulus**.
+
+> **STATUS: Roadmap inti (Fase 0–6) SELESAI.** FRIDA = agen Word multi-tool (19 tool) dgn loop
+> agentic, transaksi+rollback+Undo, konfirmasi berbasis risiko, pratinjau dampak, audit, dan
+> composite. Fase 7 (enterprise: audit sink server, session store, AppSource) bersifat opsional.
 
 ### Catatan Fase 5 — Preview/diff
 Sebelum eksekusi, tampilkan **dampak nyata** (bukan sekadar nama tool).

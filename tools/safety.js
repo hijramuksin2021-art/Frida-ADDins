@@ -36,6 +36,8 @@
     if (name.indexOf("set_track_changes") >= 0 && a.mode === "off") s += 3;
     if (name.indexOf("set_page_layout") >= 0) s += 3;      // replace OOXML seluruh body
     if (name.indexOf("edit_table") >= 0 && Array.isArray(a.deleteRowIndices) && a.deleteRowIndices.length) s += 3; // hapus baris
+    if (name.indexOf("format_business_proposal") >= 0) s += 3; // mengubah seluruh dokumen
+    if (name.indexOf("insert_cover_page") >= 0) s += 3;        // menyisip halaman & menggeser isi
     if (a.target && a.target.occurrence === "all" && a.target.mode === "search") s += 1;
 
     return s;

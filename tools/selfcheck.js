@@ -68,6 +68,11 @@ if (typeof riskScore === "function") {
   // replace_text tanpa target (default seluruh dok) = perlu konfirmasi
   check(needsConfirm({ name: "replace_text", input: { find: "A", replace: "B" } }),
     "replace_text seluruh dokumen seharusnya perlu konfirmasi", "replace-all perlu konfirmasi");
+  // composite -> berisiko (perlu konfirmasi)
+  check(needsConfirm({ name: "format_business_proposal", input: {} }),
+    "format_business_proposal seharusnya perlu konfirmasi", "format_business_proposal berisiko");
+  check(needsConfirm({ name: "insert_cover_page", input: { title: "X" } }),
+    "insert_cover_page seharusnya perlu konfirmasi", "insert_cover_page berisiko");
   // set_page_layout = replace OOXML penuh -> berisiko
   check(needsConfirm({ name: "set_page_layout", input: { orientation: "landscape" } }),
     "set_page_layout seharusnya perlu konfirmasi", "set_page_layout berisiko");

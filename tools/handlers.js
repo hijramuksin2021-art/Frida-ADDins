@@ -565,6 +565,69 @@
              style: args.style || null, method: bordersApplied ? "ooxml" : "style" };
   }
 
+  // ---- Tool composite: insert_cover_page (write) ----
+  async function insert_cover_page(context, args) {
+    const body = context.document.body;
+    // Sisipkan dari bawah ke atas di START agar urutan akhir benar.
+    // Urutan tampil: title, subtitle, (spasi), organization, author, date.
+    const lines = [];
+    if (args.date) lines.push({ t: args.date, s: null });
+    if (args.author) lines.push({ t: args.author, s: null });
+    if (args.organization) lines.push({ t: args.organization, s: null });
+    if (args.subtitle) lines.push({ t: args.subtitle, s: "subtitle" });
+    // title terakhir disisipkan -> jadi paling atas
+    // Pertama: page break sbg pemisah dari isi lama.
+    const brk = body.insertParagraph("", Word.InsertLocation.start);
+    brk.getRange(Word.RangeLocation.end).insertBreak(Word.BreakType.page, Word.InsertLocation.after);
+    // lalu baris-baris (disisipkan di start, urutan terbalik)
+    lines.forEach((ln) => {
+      const p = body.insertParagraph(ln.t, Word.InsertLocation.start);
+      p.alignment = "Centered";
+      if (ln.s === "subtitle") { try { p.styleBuiltIn = Word.BuiltInStyleName.subtitle; } catch (e) {} }
+    });
+    const title = body.insertParagraph(args.title || "Judul Dokumen", Word.InsertLocation.start);
+    title.alignment = "Centered";
+    try { title.styleBuiltIn = Word.BuiltInStyleName.title; } catch (e) {}
+    await context.sync();
+    return { ok: true, lines: lines.length + 1 };
+  }
+
+  // ---- Tool composite: format_business_proposal (write; orkestrasi) ----
+  // Memanggil handler lain. URUTAN PENTING: set_page_layout me-REPLACE OOXML body,
+  // jadi WAJIB dijalankan PALING AWAL, sebelum format heading/cover.
+  async function format_business_proposal(context, args) {
+    const steps = [];
+    // 1) layout dulu (replace body) — kalau tidak, langkah lain akan terhapus.
+    try {
+      await set_page_layout(context, { paperSize: "A4", marginPreset: "normal" });
+      steps.push("layout A4 + margin");
+    } catch (e) { /* lanjut */ }
+    // 2) warnai & tebalkan semua heading
+    try {
+      await format_text(context, {
+        target: { mode: "heading", occurrence: "all" },
+        bold: true, color: args.accentColor || "#1F3864",
+      });
+      steps.push("heading aksen");
+    } catch (e) { /* lanjut */ }
+    // 3) nomor halaman bawah-tengah
+    try {
+      await set_page_numbers(context, { position: "bottom", alignment: "Centered" });
+      steps.push("nomor halaman");
+    } catch (e) { /* lanjut */ }
+    // 4) opsional cover (prepend, aman setelah layout)
+    if (args.addCover) {
+      try {
+        await insert_cover_page(context, {
+          title: args.coverTitle || "Proposal Bisnis",
+          author: args.author, organization: args.organization, date: args.date,
+        });
+        steps.push("halaman sampul");
+      } catch (e) { /* lanjut */ }
+    }
+    return { ok: true, steps };
+  }
+
   // Sisipkan/ganti <w:tblBorders> di dalam <w:tblPr> pertama dari OOXML tabel.
   function applyTblBorders(xml, mode, val, sz, color) {
     const edge = (tag) =>
@@ -620,6 +683,8 @@
     set_track_changes,
     edit_table,
     format_table,
+    insert_cover_page,
+    format_business_proposal,
   };
 
   // ---- Pemetaan nama tool yang andal ----
@@ -690,6 +755,13 @@
           return "sisip daftar isi di " + (input.location === "selection" ? "kursor" : "awal");
         case "set_track_changes":
           return "track changes → " + input.mode;
+        case "insert_cover_page":
+          return "halaman sampul: \"" + String(input.title || "").slice(0, 40) + "\"";
+        case "format_business_proposal": {
+          const p = ["layout A4", "warnai heading", "nomor halaman"];
+          if (input.addCover) p.push("sampul");
+          return "format proposal: " + p.join(", ");
+        }
         case "create_table": {
           if (input.fromSelection) {
             const sel = context.document.getSelection(); sel.load("text");

@@ -427,12 +427,53 @@
     },
   };
 
+  // ---- Tool composite (Fase 6) — merangkai beberapa aksi jadi satu ----
+
+  const insert_cover_page = {
+    name: "insert_cover_page",
+    description:
+      "Buat HALAMAN SAMPUL profesional di awal dokumen (judul besar di tengah, subjudul, penulis, " +
+      "instansi, tanggal) lalu page break agar isi dokumen mulai di halaman berikutnya. " +
+      "Gunakan untuk 'buatkan cover page' / 'tambahkan halaman judul'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Judul utama (wajib)." },
+        subtitle: { type: "string" },
+        author: { type: "string", description: "Nama penulis / penyusun." },
+        organization: { type: "string", description: "Instansi / perusahaan." },
+        date: { type: "string", description: "Tanggal atau tahun." },
+      },
+      required: ["title"],
+    },
+  };
+
+  const format_business_proposal = {
+    name: "format_business_proposal",
+    description:
+      "Format SELURUH dokumen menjadi proposal bisnis profesional dalam satu langkah: atur kertas A4 " +
+      "+ margin rapi, warnai & tebalkan semua heading dengan warna aksen, tambah nomor halaman, dan " +
+      "opsional buat halaman sampul. Gunakan untuk 'format jadi proposal bisnis' / 'rapikan jadi dokumen profesional'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        accentColor: { type: "string", default: "#1F3864", description: "Warna aksen heading hex #RRGGBB." },
+        addCover: { type: "boolean", default: false, description: "true = sekalian buat halaman sampul." },
+        coverTitle: { type: "string", description: "Judul sampul (bila addCover)." },
+        author: { type: "string" },
+        organization: { type: "string" },
+        date: { type: "string" },
+      },
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
     set_page_layout, format_paragraph, apply_style, insert_break,
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
+    insert_cover_page, format_business_proposal,
   ];
 
   return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS) };
