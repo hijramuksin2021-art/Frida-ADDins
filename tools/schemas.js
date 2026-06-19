@@ -209,10 +209,100 @@
     }, ["target"]),
   };
 
+  // ---- Tool tambahan (Fase 4 batch 2) ----
+
+  const create_table = {
+    name: "create_table",
+    description:
+      "Buat tabel dari data 2D, ATAU konversi teks yang sedang diseleksi menjadi tabel " +
+      "(baris dipisah baris-baru, kolom dipisah tab/koma). Gunakan untuk 'ubah teks ini jadi tabel' " +
+      "atau 'buatkan tabel ...'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data: {
+          type: "array",
+          description: "Data tabel sbg array baris; tiap baris array string sel.",
+          items: { type: "array", items: { type: "string" } },
+        },
+        fromSelection: {
+          type: "boolean",
+          default: false,
+          description: "true = konversi teks terseleksi jadi tabel (abaikan 'data').",
+        },
+        colDelimiter: { type: "string", default: "\t", description: "Pemisah kolom saat fromSelection (default tab; bisa ',')." },
+        headerRow: { type: "boolean", default: true, description: "Tebalkan baris pertama sbg header." },
+        style: { type: "string", description: "Nama style tabel bawaan, mis. 'Grid Table 4 - Accent 1'." },
+      },
+    },
+  };
+
+  const format_list = {
+    name: "format_list",
+    description:
+      "Jadikan paragraf target sbg daftar berbutir (bullet) atau bernomor (numbered). " +
+      "Gunakan untuk 'jadikan poin-poin' atau 'beri penomoran'.",
+    input_schema: withTarget({
+      listType: {
+        type: "string",
+        enum: ["bullet", "number"],
+        default: "bullet",
+        description: "bullet = berbutir; number = bernomor.",
+      },
+    }, ["target"]),
+  };
+
+  const manage_header_footer = {
+    name: "manage_header_footer",
+    description:
+      "Atur isi header atau footer dokumen. Gunakan untuk 'tambahkan judul di header' atau " +
+      "'tulis nama perusahaan di footer'. Untuk nomor halaman otomatis pakai set_page_numbers.",
+    input_schema: {
+      type: "object",
+      properties: {
+        area: { type: "string", enum: ["header", "footer"], description: "Bagian yang diatur." },
+        text: { type: "string", description: "Teks yang ditulis (mengganti isi lama)." },
+        alignment: { type: "string", enum: ["Left", "Centered", "Right"], default: "Left" },
+      },
+      required: ["area", "text"],
+    },
+  };
+
+  const set_page_numbers = {
+    name: "set_page_numbers",
+    description:
+      "Tambahkan nomor halaman otomatis di footer setiap halaman. Gunakan untuk " +
+      "'beri nomor halaman' / 'tambahkan page number'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        alignment: { type: "string", enum: ["Left", "Centered", "Right"], default: "Centered" },
+        format: {
+          type: "string",
+          enum: ["plain", "page_x_of_y"],
+          default: "plain",
+          description: "plain = '1'; page_x_of_y = '1 of 10'.",
+        },
+      },
+    },
+  };
+
+  const insert_image = {
+    name: "insert_image",
+    description:
+      "Sisipkan gambar dari data base64 ke lokasi target (default akhir dokumen). " +
+      "Catatan: model biasanya tidak punya data base64; tool ini untuk dipakai alur internal/komposit.",
+    input_schema: withTarget({
+      base64: { type: "string", description: "Data gambar base64 (tanpa prefix data:)." },
+      width: { type: "number", description: "Lebar opsional (pt)." },
+    }, ["base64"]),
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
     set_page_layout, format_paragraph, apply_style, insert_break,
+    create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
   ];
 
   return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS) };

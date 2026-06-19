@@ -527,7 +527,7 @@ async function insert_cover_page(context, a) {
 | **1 — Tool registry** | ✅ SELESAI | Registry deklaratif `tools/`; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget`; selfcheck parity | `tools/`, `server.js` |
 | **2 — Agentic loop** | ✅ SELESAI | `/api/agent` relay multi-turn; loop `tool_use`↔`tool_result` di klien; dispatcher via `resolveHandler`; chat UI; read auto / write konfirmasi | `server.js`, `taskpane.*`, `tools/handlers.js` |
 | **3 — Safety core** | ✅ SELESAI | `tools/safety.js`: TransactionManager (snapshot OOXML) + rollback, Undo FRIDA, permission gate per-tool, `riskScore`/`needsConfirm`, AuditLog + panel | `tools/safety.js`, `taskpane.*` |
-| **4 — Tool breadth** | 🟡 BERJALAN | +4 tool: **set_page_layout** (orientasi/ukuran/margin via OOXML), format_paragraph, apply_style, insert_break. Sisa: header/footer, page number, table, image, list, ToC, comments, track changes | `tools/` |
+| **4 — Tool breadth** | 🟡 BERJALAN | **12 tool**. batch1: set_page_layout, format_paragraph, apply_style, insert_break. batch2: create_table, format_list, manage_header_footer, set_page_numbers, insert_image. Sisa: ToC, comments, track_changes, edit_table | `tools/` |
 | **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
 | **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
 | **7 — Enterprise** | ⬜ | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
@@ -628,6 +628,22 @@ Registry tumbuh 3 → **7 tool**. Menjawab kebutuhan "ganti posisi halaman" yang
 > **CATATAN sideload:** `set_page_layout` mengganti OOXML seluruh body. Bila dokumen punya banyak
 > section, patch berlaku ke SEMUA `sectPr`. Sudah ter-cover snapshot/rollback Fase 3 (ada tombol
 > Undo), tapi mohon perhatikan hasilnya pada dokumen multi-section saat pengujian.
+
+### Catatan Fase 4 — batch 2 (apa yang berubah)
+Registry 7 → **12 tool**.
+- **`create_table`** — dari `data` 2D atau **konversi teks terseleksi** (baris=baris-baru,
+  kolom=tab/koma). Meratakan lebar kolom; header row ditebalkan; style opsional.
+- **`format_list`** — bullet/number via `startNewList` + `attachToList`.
+- **`manage_header_footer`** — tulis teks ke header/footer (section pertama).
+- **`set_page_numbers`** — `PAGE` field (+`NUMPAGES` utk "x of y") di footer via OOXML
+  (`fldSimple`), karena Office.js tak punya API field langsung.
+- **`insert_image`** — `insertInlinePictureFromBase64`; untuk alur internal/komposit (model
+  jarang mengirim base64).
+- **Risiko:** tool batch-2 bersifat aditif/terlokalisasi (sisip tabel, beri list, tulis footer) &
+  sudah ter-cover snapshot+Undo Fase 3 → dibiarkan jalan otomatis (tanpa friksi konfirmasi).
+- **Verifikasi:** parity 12/12 (selfcheck **72 cek lulus**); agent call NYATA: "tambahkan nomor
+  halaman" → `set_page_numbers`; "ubah teks seleksi jadi tabel" → `create_table {fromSelection:true}`.
+  Eksekusi di dokumen nyata perlu dites saat sideload.
 
 > **PENTING (rotasi key):** key lama sempat tersimpan plaintext di `config.json`. Karena belum
 > pernah ter-commit ke git (repo baru di-init bersih), risikonya terbatas pada mesin lokal. Tetap

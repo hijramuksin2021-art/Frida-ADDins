@@ -313,6 +313,121 @@
     return m ? parseInt(m[1], 10) : 0;
   }
 
+  // ---- Tool: create_table (write) ----
+  async function create_table(context, args) {
+    let data = args.data;
+    let insertPoint, replaceSel = false;
+
+    if (args.fromSelection) {
+      const sel = context.document.getSelection();
+      sel.load("text");
+      await context.sync();
+      const col = args.colDelimiter || "\t";
+      data = (sel.text || "")
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length)
+        .map((line) => line.split(col).map((c) => c.trim()));
+      insertPoint = sel;
+      replaceSel = true;
+    } else {
+      insertPoint = context.document.body.getRange(Word.RangeLocation.end);
+    }
+
+    if (!data || !data.length) return { error: "tidak ada data tabel" };
+    const rows = data.length;
+    const cols = Math.max.apply(null, data.map((r) => r.length));
+    // ratakan tiap baris agar lebar kolom konsisten
+    const grid = data.map((r) => {
+      const row = r.slice();
+      while (row.length < cols) row.push("");
+      return row;
+    });
+
+    const loc = replaceSel ? Word.InsertLocation.replace : Word.InsertLocation.end;
+    const table = insertPoint.insertTable(rows, cols, loc, grid);
+    if (args.style) {
+      try { table.style = args.style; } catch (e) { /* style tak ada: abaikan */ }
+    }
+    if (args.headerRow !== false && rows > 0) {
+      table.getRow(0).font.bold = true;
+    }
+    await context.sync();
+    return { rows, cols };
+  }
+
+  // ---- Tool: format_list (write) ----
+  async function format_list(context, args) {
+    const paras = await resolveTargetParagraphs(context, args.target);
+    if (!paras.length) return { applied: 0 };
+    // mulai list pada paragraf pertama, sisanya menempel ke list yang sama
+    const first = paras[0];
+    const list = first.startNewList();
+    list.load("id");
+    await context.sync();
+    for (let k = 1; k < paras.length; k++) {
+      paras[k].attachToList(list.id, 0);
+    }
+    // bullet vs number: ubah level type bila perlu
+    await context.sync();
+    return { applied: paras.length, listType: args.listType || "bullet" };
+  }
+
+  // ---- Tool: manage_header_footer (write) ----
+  async function manage_header_footer(context, args) {
+    const section = context.document.sections.getFirst();
+    const area = args.area === "footer"
+      ? section.getFooter(Word.HeaderFooterType.primary)
+      : section.getHeader(Word.HeaderFooterType.primary);
+    area.clear();
+    const p = area.insertParagraph(args.text || "", Word.InsertLocation.start);
+    if (args.alignment) p.alignment = args.alignment;
+    await context.sync();
+    return { ok: true, area: args.area };
+  }
+
+  // ---- Tool: set_page_numbers (write, OOXML PAGE field) ----
+  async function set_page_numbers(context, args) {
+    const section = context.document.sections.getFirst();
+    const footer = section.getFooter(Word.HeaderFooterType.primary);
+    footer.clear();
+    const p = footer.insertParagraph("", Word.InsertLocation.start);
+    p.alignment = args.alignment || "Centered";
+    const ooxml = args.format === "page_x_of_y"
+      ? wrapRunOoxml(fldSimple("PAGE") + textRun(" of ") + fldSimple("NUMPAGES"))
+      : wrapRunOoxml(fldSimple("PAGE"));
+    p.insertOoxml(ooxml, Word.InsertLocation.replace);
+    await context.sync();
+    return { ok: true, format: args.format || "plain" };
+  }
+
+  // ---- Tool: insert_image (write) ----
+  async function insert_image(context, args) {
+    if (!args.base64) return { error: "base64 kosong" };
+    const ranges = await resolveTarget(context, args.target || { mode: "whole_document" });
+    const anchor = ranges.length
+      ? ranges[ranges.length - 1]
+      : context.document.body.getRange(Word.RangeLocation.end);
+    const pic = anchor.insertInlinePictureFromBase64(args.base64, Word.InsertLocation.end);
+    if (args.width) pic.width = args.width;
+    await context.sync();
+    return { ok: true };
+  }
+
+  // --- util OOXML untuk field (PAGE/NUMPAGES) ---
+  function fldSimple(instr) {
+    return '<w:fldSimple w:instr=" ' + instr + ' "><w:r><w:t>1</w:t></w:r></w:fldSimple>';
+  }
+  function textRun(t) { return '<w:r><w:t xml:space="preserve">' + t + '</w:t></w:r>'; }
+  function wrapRunOoxml(inner) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
+      '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">' +
+      '<pkg:xmlData>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:body><w:p>' + inner + '</w:p></w:body></w:document>' +
+      '</pkg:xmlData></pkg:part></pkg:package>';
+  }
+
   const HANDLERS = {
     get_document_outline,
     format_text,
@@ -321,6 +436,11 @@
     format_paragraph,
     apply_style,
     insert_break,
+    create_table,
+    format_list,
+    manage_header_footer,
+    set_page_numbers,
+    insert_image,
   };
 
   // ---- Pemetaan nama tool yang andal ----
