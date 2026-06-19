@@ -116,8 +116,104 @@
     },
   };
 
+  // ---- Tool tambahan (Fase 4) ----
+
+  const set_page_layout = {
+    name: "set_page_layout",
+    description:
+      "Atur tata letak halaman dokumen: orientasi (portrait/landscape), ukuran kertas " +
+      "(A4/Letter/Legal), dan/atau margin (preset normal/narrow/moderate/wide, atau angka cm). " +
+      "Gunakan untuk perintah seperti 'ubah ke landscape', 'ganti kertas ke A4', 'perkecil margin'. " +
+      "Hanya set properti yang diminta; yang lain dibiarkan.",
+    input_schema: {
+      type: "object",
+      properties: {
+        orientation: {
+          type: "string",
+          enum: ["portrait", "landscape"],
+          description: "Orientasi halaman.",
+        },
+        paperSize: {
+          type: "string",
+          enum: ["A4", "Letter", "Legal", "A3", "A5"],
+          description: "Ukuran kertas.",
+        },
+        marginPreset: {
+          type: "string",
+          enum: ["normal", "narrow", "moderate", "wide"],
+          description: "Preset margin: normal=2.54cm, narrow=1.27cm, moderate=2.54/1.91, wide=2.54/5.08.",
+        },
+        marginCm: {
+          type: "object",
+          description: "Margin manual dalam cm (override preset). Set field yang perlu saja.",
+          properties: {
+            top: { type: "number" }, bottom: { type: "number" },
+            left: { type: "number" }, right: { type: "number" },
+          },
+        },
+      },
+    },
+  };
+
+  const format_paragraph = {
+    name: "format_paragraph",
+    description:
+      "Atur format PARAGRAF pada range target: perataan (alignment), spasi sebelum/sesudah (pt), " +
+      "jarak baris, dan indentasi kiri/baris-pertama (pt). Untuk format karakter (bold/warna) pakai format_text.",
+    input_schema: withTarget({
+      alignment: {
+        type: "string",
+        enum: ["Left", "Centered", "Right", "Justified"],
+      },
+      spaceBefore: { type: "number", description: "Spasi sebelum paragraf (pt)." },
+      spaceAfter: { type: "number", description: "Spasi sesudah paragraf (pt)." },
+      lineSpacing: { type: "number", description: "Jarak antar baris (pt)." },
+      leftIndent: { type: "number", description: "Indentasi kiri (pt)." },
+      firstLineIndent: { type: "number", description: "Indentasi baris pertama (pt)." },
+    }),
+  };
+
+  const apply_style = {
+    name: "apply_style",
+    description:
+      "Terapkan STYLE bawaan Word ke paragraf target (mis. ubah jadi 'Heading 1', 'Title', 'Normal'). " +
+      "Gunakan untuk perintah seperti 'jadikan ini Heading 2' atau 'buat semua judul jadi Heading 1'.",
+    input_schema: withTarget({
+      styleName: {
+        type: "string",
+        description:
+          "Nama style bawaan, mis. 'Heading 1','Heading 2','Title','Subtitle','Normal','Quote'.",
+      },
+    }, ["target", "styleName"]),
+  };
+
+  const insert_break = {
+    name: "insert_break",
+    description:
+      "Sisipkan pemisah: ganti halaman (page break) atau ganti bagian (section break). " +
+      "Lokasi mengikuti range target (default: sebelum range). Section break diperlukan bila " +
+      "ingin orientasi/ukuran berbeda antar bagian.",
+    input_schema: withTarget({
+      breakType: {
+        type: "string",
+        enum: ["page", "sectionNext", "sectionContinuous"],
+        default: "page",
+        description: "page=ganti halaman; sectionNext=section baru di halaman berikut; sectionContinuous=section baru tanpa ganti halaman.",
+      },
+      position: {
+        type: "string",
+        enum: ["before", "after"],
+        default: "before",
+        description: "Sisipkan sebelum atau sesudah range target.",
+      },
+    }, ["target"]),
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
-  const SCHEMAS = [get_document_outline, format_text, replace_text];
+  const SCHEMAS = [
+    get_document_outline, format_text, replace_text,
+    set_page_layout, format_paragraph, apply_style, insert_break,
+  ];
 
   return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS) };
 

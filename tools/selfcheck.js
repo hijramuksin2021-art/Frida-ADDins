@@ -67,6 +67,9 @@ if (typeof riskScore === "function") {
   // replace_text tanpa target (default seluruh dok) = perlu konfirmasi
   check(needsConfirm({ name: "replace_text", input: { find: "A", replace: "B" } }),
     "replace_text seluruh dokumen seharusnya perlu konfirmasi", "replace-all perlu konfirmasi");
+  // set_page_layout = replace OOXML penuh -> berisiko
+  check(needsConfirm({ name: "set_page_layout", input: { orientation: "landscape" } }),
+    "set_page_layout seharusnya perlu konfirmasi", "set_page_layout berisiko");
   // kebijakan deny
   Permissions.policy["__danger_test"] = "deny";
   check(Permissions.isBlocked("__danger_test"), "kebijakan deny tidak berlaku");

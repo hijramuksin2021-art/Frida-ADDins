@@ -152,10 +152,175 @@
     return { replaced };
   }
 
+  // ---- helper: resolve target -> Paragraph[] (untuk properti tingkat paragraf) ----
+  // format_paragraph & apply_style butuh objek Paragraph, bukan Range.
+  async function resolveTargetParagraphs(context, target) {
+    target = target || { mode: "selection" };
+    const body = context.document.body;
+    const all = body.paragraphs;
+
+    if (target.mode === "paragraph_index") {
+      all.load("items");
+      await context.sync();
+      const p = all.items[target.index];
+      return p ? [p] : [];
+    }
+    if (target.mode === "heading") {
+      all.load("items/styleBuiltIn");
+      await context.sync();
+      return all.items.filter((p) => /Heading/i.test(p.styleBuiltIn || ""));
+    }
+    if (target.mode === "style") {
+      all.load("items/style,items/styleBuiltIn");
+      await context.sync();
+      const want = (target.value || "").toLowerCase();
+      return all.items.filter(
+        (p) => (p.style || "").toLowerCase() === want ||
+               (p.styleBuiltIn || "").toLowerCase() === want
+      );
+    }
+    if (target.mode === "whole_document") {
+      all.load("items");
+      await context.sync();
+      return all.items;
+    }
+    // selection / search: ambil paragraf yang menyentuh range tsb
+    const ranges = await resolveTarget(context, target);
+    const paras = ranges.map((r) => r.paragraphs);
+    paras.forEach((pc) => pc.load("items"));
+    await context.sync();
+    const out = [];
+    paras.forEach((pc) => pc.items.forEach((p) => out.push(p)));
+    return out;
+  }
+
+  // ---- Tool: format_paragraph (write) ----
+  async function format_paragraph(context, args) {
+    const paras = await resolveTargetParagraphs(context, args.target);
+    paras.forEach((p) => {
+      if (args.alignment) p.alignment = args.alignment;
+      if (args.spaceBefore !== undefined) p.spaceBefore = args.spaceBefore;
+      if (args.spaceAfter !== undefined) p.spaceAfter = args.spaceAfter;
+      if (args.lineSpacing !== undefined) p.lineSpacing = args.lineSpacing;
+      if (args.leftIndent !== undefined) p.leftIndent = args.leftIndent;
+      if (args.firstLineIndent !== undefined) p.firstLineIndent = args.firstLineIndent;
+    });
+    await context.sync();
+    return { applied: paras.length };
+  }
+
+  // ---- Tool: apply_style (write) ----
+  async function apply_style(context, args) {
+    const paras = await resolveTargetParagraphs(context, args.target);
+    paras.forEach((p) => { p.style = args.styleName; });
+    await context.sync();
+    return { applied: paras.length, style: args.styleName };
+  }
+
+  // ---- Tool: insert_break (write) ----
+  async function insert_break(context, args) {
+    const ranges = await resolveTarget(context, args.target);
+    if (!ranges.length) return { inserted: 0 };
+    const map = {
+      page: Word.BreakType.page,
+      sectionNext: Word.BreakType.sectionNext,
+      sectionContinuous: Word.BreakType.sectionContinuous,
+    };
+    const bt = map[args.breakType] || Word.BreakType.page;
+    const loc = args.position === "after"
+      ? Word.InsertLocation.after : Word.InsertLocation.before;
+    let n = 0;
+    ranges.forEach((r) => { r.insertBreak(bt, loc); n++; });
+    await context.sync();
+    return { inserted: n, breakType: args.breakType || "page" };
+  }
+
+  // ---- Tool: set_page_layout (write, via OOXML sectPr) ----
+  // Office.js JS API tidak mengekspos pageSetup, jadi kita ubah sectPr di OOXML
+  // (pgSz utk ukuran/orientasi, pgMar utk margin). Satuan OOXML = twips (1cm=567twip).
+  const CM = 567; // twips per cm (1 inch=1440 twip, 1cm=1440/2.54)
+  const PAPER = { // ukuran dlm twips (lebar x tinggi, portrait)
+    A4:     [11906, 16838], Letter: [12240, 15840], Legal: [12240, 20160],
+    A3:     [16838, 23811], A5:     [8391, 11906],
+  };
+  const MARGIN_PRESET = { // [top,bottom,left,right] dlm cm
+    normal:   [2.54, 2.54, 2.54, 2.54],
+    narrow:   [1.27, 1.27, 1.27, 1.27],
+    moderate: [2.54, 2.54, 1.91, 1.91],
+    wide:     [2.54, 2.54, 5.08, 5.08],
+  };
+
+  async function set_page_layout(context, args) {
+    const body = context.document.body;
+    const ooxmlResult = body.getOoxml();
+    await context.sync();
+    let xml = ooxmlResult.value;
+
+    // 1) pgSz: ukuran & orientasi
+    if (args.paperSize || args.orientation) {
+      xml = patchPgSz(xml, args.paperSize, args.orientation);
+    }
+    // 2) pgMar: margin
+    let margins = null;
+    if (args.marginPreset && MARGIN_PRESET[args.marginPreset]) {
+      const m = MARGIN_PRESET[args.marginPreset];
+      margins = { top: m[0], bottom: m[1], left: m[2], right: m[3] };
+    }
+    if (args.marginCm) {
+      margins = Object.assign(margins || {}, args.marginCm);
+    }
+    if (margins) xml = patchPgMar(xml, margins);
+
+    body.clear();
+    body.insertOoxml(xml, Word.InsertLocation.replace);
+    await context.sync();
+    return {
+      ok: true,
+      orientation: args.orientation || null,
+      paperSize: args.paperSize || null,
+      margin: margins ? "diatur" : null,
+    };
+  }
+
+  // --- util OOXML untuk set_page_layout ---
+  function patchPgSz(xml, paperSize, orientation) {
+    return xml.replace(/<w:pgSz\b[^>]*\/>/g, (tag) => {
+      let w = numAttr(tag, "w:w"), h = numAttr(tag, "w:h");
+      if (paperSize && PAPER[paperSize]) { w = PAPER[paperSize][0]; h = PAPER[paperSize][1]; }
+      let orient = orientation || (numAttr(tag, "w:w") > numAttr(tag, "w:h") ? "landscape" : "portrait");
+      if (orient === "landscape" && w < h) { const t = w; w = h; h = t; }
+      if (orient === "portrait" && w > h) { const t = w; w = h; h = t; }
+      return '<w:pgSz w:w="' + w + '" w:h="' + h + '" w:orient="' + orient + '"/>';
+    });
+  }
+  function patchPgMar(xml, m) {
+    const tw = (cm) => (cm == null ? null : Math.round(cm * CM));
+    return xml.replace(/<w:pgMar\b[^>]*\/>/g, (tag) => {
+      const top = tw(m.top) ?? numAttr(tag, "w:top");
+      const bottom = tw(m.bottom) ?? numAttr(tag, "w:bottom");
+      const left = tw(m.left) ?? numAttr(tag, "w:left");
+      const right = tw(m.right) ?? numAttr(tag, "w:right");
+      const header = numAttr(tag, "w:header") || 720;
+      const footer = numAttr(tag, "w:footer") || 720;
+      const gutter = numAttr(tag, "w:gutter") || 0;
+      return '<w:pgMar w:top="' + top + '" w:right="' + right + '" w:bottom="' + bottom +
+             '" w:left="' + left + '" w:header="' + header + '" w:footer="' + footer +
+             '" w:gutter="' + gutter + '"/>';
+    });
+  }
+  function numAttr(tag, name) {
+    const m = tag.match(new RegExp(name.replace(":", "\\:") + '="(-?\\d+)"'));
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
   const HANDLERS = {
     get_document_outline,
     format_text,
     replace_text,
+    set_page_layout,
+    format_paragraph,
+    apply_style,
+    insert_break,
   };
 
   // ---- Pemetaan nama tool yang andal ----

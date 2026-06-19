@@ -527,7 +527,7 @@ async function insert_cover_page(context, a) {
 | **1 — Tool registry** | ✅ SELESAI | Registry deklaratif `tools/`; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget`; selfcheck parity | `tools/`, `server.js` |
 | **2 — Agentic loop** | ✅ SELESAI | `/api/agent` relay multi-turn; loop `tool_use`↔`tool_result` di klien; dispatcher via `resolveHandler`; chat UI; read auto / write konfirmasi | `server.js`, `taskpane.*`, `tools/handlers.js` |
 | **3 — Safety core** | ✅ SELESAI | `tools/safety.js`: TransactionManager (snapshot OOXML) + rollback, Undo FRIDA, permission gate per-tool, `riskScore`/`needsConfirm`, AuditLog + panel | `tools/safety.js`, `taskpane.*` |
-| **4 — Tool breadth** | ⬜ Berikutnya | Lengkapi tool (paragraph, style, header/footer, **page layout/orientasi**, break, table, image, list, ToC, comments, track changes) | baru |
+| **4 — Tool breadth** | 🟡 BERJALAN | +4 tool: **set_page_layout** (orientasi/ukuran/margin via OOXML), format_paragraph, apply_style, insert_break. Sisa: header/footer, page number, table, image, list, ToC, comments, track changes | `tools/` |
 | **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
 | **6 — Composite & polish** | ⬜ | `insert_cover_page`, "business proposal", tool router, audit panel, streaming | baru |
 | **7 — Enterprise** | ⬜ | Audit sink server, session store, policy per-tenant, sideload→AppSource | baru |
@@ -607,6 +607,27 @@ async function insert_cover_page(context, a) {
 - **Verifikasi:** semua file `node -c` OK; globals browser (`FRIDA_SAFETY`) ter-set; `begin()` di
   Node no-op; server boot & menyajikan `/tools/safety.js` (200). Eksekusi rollback/Undo nyata
   butuh host Word (tak bisa diuji headless) — logikanya lurus: snapshot OOXML lalu `insertOoxml`.
+
+### Catatan Fase 4 — batch 1 (apa yang berubah)
+Registry tumbuh 3 → **7 tool**. Menjawab kebutuhan "ganti posisi halaman" yang sempat memblok.
+- **`set_page_layout`** — orientasi (portrait/landscape), ukuran kertas (A4/Letter/Legal/A3/A5),
+  margin (preset normal/narrow/moderate/wide atau `marginCm` manual). Office.js JS API TIDAK
+  mengekspos `pageSetup`, jadi handler mengubah **OOXML `sectPr`** (`pgSz` utk ukuran/orientasi,
+  `pgMar` utk margin; satuan twips, 1cm=567twip) lewat `getOoxml` → patch regex → `insertOoxml`.
+  Karena ini replace OOXML seluruh body → `riskScore` +3 (wajib konfirmasi + ter-snapshot/rollback).
+- **`format_paragraph`** — alignment, spaceBefore/After, lineSpacing, leftIndent, firstLineIndent.
+  Butuh objek `Paragraph` (bukan Range), maka ditambah helper **`resolveTargetParagraphs`**.
+- **`apply_style`** — set `paragraph.style` ke style bawaan (Heading 1/2, Title, Normal, …).
+- **`insert_break`** — page break / sectionNext / sectionContinuous, posisi before/after target.
+  Section break = prasyarat bila ingin orientasi berbeda antar bagian.
+- **Verifikasi:** parity 7/7 (selfcheck **47 cek lulus**); unit-test patcher OOXML (landscape A4
+  menukar dimensi; 1.27cm→720 twips); panggilan agent NYATA "ubah ke landscape" → model memilih
+  `set_page_layout {orientation:"landscape"}`. Eksekusi OOXML di dokumen nyata perlu dites saat
+  sideload (tak bisa headless).
+
+> **CATATAN sideload:** `set_page_layout` mengganti OOXML seluruh body. Bila dokumen punya banyak
+> section, patch berlaku ke SEMUA `sectPr`. Sudah ter-cover snapshot/rollback Fase 3 (ada tombol
+> Undo), tapi mohon perhatikan hasilnya pada dokumen multi-section saat pengujian.
 
 > **PENTING (rotasi key):** key lama sempat tersimpan plaintext di `config.json`. Karena belum
 > pernah ter-commit ke git (repo baru di-init bersih), risikonya terbatas pada mesin lokal. Tetap
