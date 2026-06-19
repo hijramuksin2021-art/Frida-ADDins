@@ -524,8 +524,8 @@ async function insert_cover_page(context, a) {
 | Fase | Status | Deliverable | Basis kode |
 |---|---|---|---|
 | **0 — Hardening** | ✅ SELESAI | Key → env, `.env`/`.env.example`, `.gitignore`, path guard, git init | `config.json`, `server.js` |
-| **1 — Tool registry** | ⬜ Berikutnya | Refactor `EDIT_TOOL` → registry; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget` | `server.js`, `taskpane.js` |
-| **2 — Agentic loop** | ⬜ | `/api/agent` multi-turn `tool_use`↔`tool_result`; dispatcher klien; chat UI | `callOnce`, `process()` |
+| **1 — Tool registry** | ✅ SELESAI | Registry deklaratif `tools/`; 3 tool pertama (`get_document_outline`, `format_text`, `replace_text`); `resolveTarget`; selfcheck parity | `tools/`, `server.js` |
+| **2 — Agentic loop** | ⬜ Berikutnya | `/api/agent` multi-turn `tool_use`↔`tool_result`; dispatcher klien; chat UI | `callOnce`, `process()`, `tools/handlers.js` |
 | **3 — Safety core** | ⬜ | TransactionManager (snapshot OOXML), rollback, Undo, permission gate, riskScore | baru |
 | **4 — Tool breadth** | ⬜ | Lengkapi 18 tool | baru |
 | **5 — Preview/diff** | ⬜ | Dry-run preview + diff visual | `taskpane.js` |
@@ -541,6 +541,22 @@ async function insert_cover_page(context, a) {
   (karena masih bisa memuat `apiKey` sbg fallback); template ada di `config.example.json`.
 - `.env`: berisi key asli (gitignored). `.env.example`: template tanpa nilai rahasia.
 - `.gitignore`: `.env`, `config.json`, `node_modules/`, log, `*.pem`, dll.
+
+### Catatan Fase 1 (apa yang berubah)
+- **`tools/schemas.js`** — sumber kebenaran schema. Ekspor dual-mode: `module.exports` (Node) +
+  `window.FRIDA_SCHEMAS` (browser). Selektor `target` didefinisikan sekali (`targetSchema`) lalu
+  di-**inline** ke tiap tool via `withTarget()` — bukan `$ref/$defs`, karena banyak provider
+  tool-calling tidak andal memproses `$ref`.
+- **`tools/handlers.js`** — implementasi Office.js + `resolveTarget`. Dual-mode (`window.FRIDA_HANDLERS`).
+  `resolveTarget` mendukung mode: selection, whole_document, paragraph_index, search (first/all/nth),
+  heading, style.
+- **`tools/selfcheck.js`** + `npm run check` — uji invarian: parity nama schema↔handler dua arah,
+  bentuk schema valid, `resolveTarget` ada. Exit≠0 bila dilanggar (siap untuk CI/pre-commit).
+- **`server.js`** — memuat `TOOL_SCHEMAS` dari registry & melaporkan jumlah tool saat start.
+  `/api/edit` lama SENGAJA dibiarkan utuh (masih dipakai `taskpane.js` saat ini); endpoint agentic
+  `/api/agent` yang memakai registry menyusul di Fase 2.
+- **Belum** mengubah `taskpane.js`/UI — itu bagian Fase 2 (dispatcher klien + chat). Registry sudah
+  bisa di-load browser via `window.FRIDA_*` begitu `taskpane.html` menyertakan kedua file `tools/`.
 
 > **PENTING (rotasi key):** key lama sempat tersimpan plaintext di `config.json`. Karena belum
 > pernah ter-commit ke git (repo baru di-init bersih), risikonya terbatas pada mesin lokal. Tetap

@@ -11,6 +11,10 @@ const fs = require("fs");
 const path = require("path");
 const devCerts = require("office-addin-dev-certs");
 
+// Registry tool (Fase 1) — sumber kebenaran schema yang dikirim ke LLM.
+// Endpoint agentic yang memakainya menyusul di Fase 2; di sini cukup dimuat & dilaporkan.
+const { SCHEMAS: TOOL_SCHEMAS } = require("./tools/schemas");
+
 // ---- konfigurasi: env DULU, lalu config.json sbg fallback (nilai non-rahasia) ----
 // API key TIDAK boleh disimpan di config.json yang ter-commit. Taruh di .env / env OS.
 // Loader .env mini (tanpa dependency tambahan): KEY=VALUE per baris, # = komentar.
@@ -248,6 +252,7 @@ async function handleEdit(req, res) {
       console.log("FRIDA berjalan di  https://localhost:" + PORT + "/taskpane.html");
       console.log("Provider :", cfg.baseUrl);
       console.log("Model    :", cfg.model);
+      console.log("Tools    :", TOOL_SCHEMAS.length, "terdaftar (" + TOOL_SCHEMAS.map(t => t.name).join(", ") + ")");
       console.log("Biarkan jendela ini terbuka selama memakai add-in di Word.");
     });
 })();

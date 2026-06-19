@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "cert": "office-addin-dev-certs install",
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node tools/selfcheck.js"
   },
   "dependencies": {
     "jimp": "^1.6.1",
