@@ -96,6 +96,14 @@ async function onSend() {
   }
 }
 
+// Tool dengan runtime "server" (mis. RAG) dieksekusi di server; klien hanya
+// menjalankan tool Word (runtime client). resolusi via registry (tahan rename).
+function isClientTool(name) {
+  const rt = window.FRIDA_SCHEMAS && window.FRIDA_SCHEMAS.runtimeOf
+    ? window.FRIDA_SCHEMAS.runtimeOf(name) : "client";
+  return rt !== "server";
+}
+
 async function runAgentLoop() {
   for (let step = 0; step < MAX_STEPS; step++) {
     setStatus("FRIDA berpikir… (langkah " + (step + 1) + ")");
@@ -107,58 +115,89 @@ async function runAgentLoop() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
 
+    // Server adalah sumber kebenaran riwayat (sudah menjalankan tool server/RAG).
+    if (Array.isArray(data.messages)) messages = data.messages;
     const content = Array.isArray(data.content) ? data.content : [];
-    messages.push({ role: "assistant", content }); // simpan turn asisten apa adanya
 
-    // tampilkan teks yang ada
+    // tampilkan teks asisten
     content.filter((b) => b.type === "text" && b.text && b.text.trim())
            .forEach((b) => addBubble("assistant", escapeHtml(b.text)));
 
-    const toolUses = content.filter((b) => b.type === "tool_use");
-    if (toolUses.length === 0) return; // jawaban akhir -> selesai
+    // tampilkan aktivitas tool server (mis. pencarian sumber) sbg info
+    const serverResults = Array.isArray(data.serverResults) ? data.serverResults : [];
+    renderServerActivity(content, serverResults);
 
-    const { needsConfirm, Permissions } = window.FRIDA_SAFETY;
+    if (data.done) return; // jawaban akhir
 
-    // Blokir aksi yang kebijakannya 'deny'.
-    const blocked = toolUses.filter((t) => Permissions.isBlocked(canonName(t.name)));
-    if (blocked.length) {
-      messages.push({ role: "user", content: blocked.map((t) => ({
-        type: "tool_result", tool_use_id: t.id, is_error: true,
-        content: "Ditolak kebijakan keamanan: " + canonName(t.name),
-      })) });
-      addBubble("error", "Aksi diblokir kebijakan: " + blocked.map((t) => canonName(t.name)).join(", "));
-      // sisanya yang tak diblokir tetap diproses di iterasi berikut; di sini berhenti utk aman
+    // hanya tool client (Word) yang dieksekusi di sini
+    const clientToolUses = content.filter((b) => b.type === "tool_use" && isClientTool(b.name));
+    if (clientToolUses.length === 0) {
+      // tak ada yang bisa dikerjakan klien; lanjut bawa hasil server bila ada
+      if (serverResults.length) { messages.push({ role: "user", content: serverResults }); continue; }
       return;
     }
 
-    // Konfirmasi berbasis RISIKO + mode Pratinjau.
-    const risky = toolUses.filter((t) => needsConfirm({ name: canonName(t.name), input: t.input }));
-    const hasWrite = toolUses.some((t) => !isReadTool(t.name));
-    // Tinjau dulu bila: ada aksi berisiko, ATAU mode pratinjau aktif & ada write.
+    const { needsConfirm, Permissions } = window.FRIDA_SAFETY;
+
+    const blocked = clientToolUses.filter((t) => Permissions.isBlocked(canonName(t.name)));
+    if (blocked.length) {
+      messages.push({ role: "user", content: serverResults.concat(clientToolUses.map((t) => ({
+        type: "tool_result", tool_use_id: t.id, is_error: true,
+        content: "Ditolak kebijakan keamanan: " + canonName(t.name),
+      }))) });
+      addBubble("error", "Aksi diblokir kebijakan: " + blocked.map((t) => canonName(t.name)).join(", "));
+      return;
+    }
+
+    const risky = clientToolUses.filter((t) => needsConfirm({ name: canonName(t.name), input: t.input }));
+    const hasWrite = clientToolUses.some((t) => !isReadTool(t.name));
     const mustConfirm = risky.length > 0 || (previewMode() && hasWrite);
     if (mustConfirm) {
-      // Hitung pratinjau dampak (READ-ONLY) sebelum menampilkan konfirmasi.
       setStatus("FRIDA menyiapkan pratinjau…");
-      const previews = await computePreviews(toolUses);
-      const okGo = await confirmBatch(toolUses, risky, previews);
+      const previews = await computePreviews(clientToolUses);
+      const okGo = await confirmBatch(clientToolUses, risky, previews);
       if (!okGo) {
-        messages.push({ role: "user", content: toolUses.map((t) => ({
+        messages.push({ role: "user", content: serverResults.concat(clientToolUses.map((t) => ({
           type: "tool_result", tool_use_id: t.id, is_error: true,
           content: "Dibatalkan oleh pengguna.",
-        })) });
+        }))) });
         addBubble("error", "Dibatalkan. FRIDA tidak menerapkan perubahan.");
         return;
       }
     } else {
-      renderToolCalls(toolUses, hasWrite ? "menerapkan…" : "membaca dokumen…");
+      renderToolCalls(clientToolUses, hasWrite ? "menerapkan…" : "membaca dokumen…");
     }
 
-    setStatus("FRIDA menjalankan " + toolUses.length + " aksi…");
-    const results = await executeToolUses(toolUses, hasWrite);
-    messages.push({ role: "user", content: results });
+    setStatus("FRIDA menjalankan " + clientToolUses.length + " aksi…");
+    const results = await executeToolUses(clientToolUses, hasWrite);
+    // gabung hasil server-tool (jika ada di turn yg sama) + hasil client-tool
+    messages.push({ role: "user", content: serverResults.concat(results) });
     if (hasWrite) renderAudit();
   }
   addBubble("error", "Batas langkah tercapai (" + MAX_STEPS + ").");
+}
+
+// Tampilkan ringkas hasil tool server (mis. pencarian sumber) di chat.
+function renderServerActivity(content, serverResults) {
+  if (!serverResults || !serverResults.length) return;
+  const byId = {};
+  serverResults.forEach((r) => (byId[r.tool_use_id] = r));
+  content.filter((b) => b.type === "tool_use" && byId[b.id]).forEach((b) => {
+    let info = "";
+    try {
+      const out = JSON.parse(byId[b.id].content);
+      if (out.hits) info = out.hits.length + " kutipan ditemukan" +
+        (out.hits[0] ? " (skor " + out.hits[0].score + ")" : "");
+      else if (out.note) info = out.note;
+      else if (out.error) info = "error: " + out.error;
+    } catch (_) {}
+    const card = document.createElement("div");
+    card.className = "tool";
+    card.innerHTML = '<div class="tag">🔎 ' + escapeHtml(canonName(b.name)) + "</div>" +
+      '<div class="tnote ok">' + escapeHtml(info) + "</div>";
+    logEl().appendChild(card);
+  });
+  scrollDown();
 }
 
 // Eksekusi satu batch tool_use dalam SATU Word.run -> array tool_result.

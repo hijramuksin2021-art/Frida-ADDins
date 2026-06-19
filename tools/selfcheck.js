@@ -25,8 +25,9 @@ for (const s of SCHEMAS) {
   check(s.input_schema && s.input_schema.type === "object", `schema '${s.name}' input_schema.type harus 'object'`);
 }
 
-// 2) parity nama: schema -> handler
-const schemaNames = SCHEMAS.map((s) => s.name);
+// 2) parity nama: schema CLIENT -> handler (tool server/RAG dieksekusi di server, tak punya handler klien)
+const clientSchemas = SCHEMAS.filter((s) => (s.runtime || "client") === "client");
+const schemaNames = clientSchemas.map((s) => s.name);
 const handlerNames = Object.keys(HANDLERS);
 
 for (const n of schemaNames) {

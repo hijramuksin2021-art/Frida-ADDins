@@ -13,7 +13,14 @@ const devCerts = require("office-addin-dev-certs");
 
 // Registry tool (Fase 1) — sumber kebenaran schema yang dikirim ke LLM.
 // Endpoint agentic yang memakainya menyusul di Fase 2; di sini cukup dimuat & dilaporkan.
-const { SCHEMAS: TOOL_SCHEMAS } = require("./tools/schemas");
+const { SCHEMAS: TOOL_SCHEMAS, resolveName: resolveToolName, runtimeOf } = require("./tools/schemas");
+const ragAgentTools = require("./rag/agent_tools");
+
+// Tools yang DIKIRIM ke provider hanya boleh punya {name, description, input_schema}.
+// Field internal (mis. `runtime`) ditolak Anthropic ("Extra inputs are not permitted").
+const API_TOOLS = TOOL_SCHEMAS.map((t) => ({
+  name: t.name, description: t.description, input_schema: t.input_schema,
+}));
 
 // Research Copilot / RAG (R0) — ingestion sumber + status embeddings provider.
 const ingest = require("./rag/ingest");
@@ -231,6 +238,8 @@ const AGENT_SYSTEM_PROMPT = [
   "- 'buat tabel baru' atau 'ubah teks jadi tabel' -> create_table.",
   "- 'buatkan cover/halaman judul/halaman sampul' -> insert_cover_page (1 panggilan, isi judul/penulis/tanggal dari konteks).",
   "- 'format jadi proposal bisnis', 'rapikan jadi dokumen profesional' -> format_business_proposal (1 panggilan, jangan urai jadi banyak tool kecil).",
+  "- Pertanyaan yang merujuk dokumen/jurnal yang DIUNGGAH ('berdasarkan jurnal X', 'menurut paper terunggah', 'cari di sumber', 'ringkas jurnal ini') -> panggil search_uploaded_sources DULU untuk mengambil kutipan, lalu jawab/menulis HANYA berdasarkan kutipan yang dikembalikan (sertakan source_id). JANGAN mengarang isi atau referensi.",
+  "Jika search_uploaded_sources tak mengembalikan kutipan relevan, katakan terus terang bahwa bukti di sumber tak cukup — jangan mengarang.",
   "Jika sebuah tool mengembalikan error, JANGAN mengulang tool yang sama berkali-kali; baca pesan error, perbaiki argumen, atau laporkan ke pengguna dengan teks.",
   "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",
   "Jangan mengubah bagian yang tidak diminta. Pertahankan bahasa dokumen.",
@@ -250,7 +259,7 @@ async function callAgentOnce(messages) {
       model: cfg.model,
       max_tokens: cfg.maxTokens || 8000,
       system: AGENT_SYSTEM_PROMPT,
-      tools: TOOL_SCHEMAS,
+      tools: API_TOOLS,
       tool_choice: { type: "auto" },
       messages,
     }),
@@ -280,6 +289,47 @@ async function callAgent(messages) {
   throw lastErr;
 }
 
+// Jalankan satu tool server (RAG) -> blok tool_result.
+async function runServerTool(tu) {
+  const real = resolveToolName(tu.name) || tu.name;
+  const out = await ragAgentTools.executeServerTool(real, tu.input || {});
+  return {
+    type: "tool_result", tool_use_id: tu.id,
+    is_error: !!(out && out.error),
+    content: JSON.stringify(out),
+  };
+}
+
+// Loop agentic di SERVER: tool server (RAG) dieksekusi di sini; saat model
+// memanggil tool client (Word), kembalikan ke task pane untuk Word.run.
+const AGENT_MAX_STEPS = 12;
+async function runAgentServerLoop(messages) {
+  for (let step = 0; step < AGENT_MAX_STEPS; step++) {
+    const data = await callAgent(messages);
+    messages.push({ role: "assistant", content: data.content });
+
+    const toolUses = (data.content || []).filter((b) => b.type === "tool_use");
+    if (!toolUses.length) return { done: true, content: data.content, messages };
+
+    const serverTU = [], clientTU = [];
+    toolUses.forEach((tu) => (runtimeOf(tu.name) === "server" ? serverTU : clientTU).push(tu));
+
+    if (clientTU.length === 0) {
+      // semua server-tool -> eksekusi & lanjut loop tanpa ke klien
+      const results = [];
+      for (const tu of serverTU) results.push(await runServerTool(tu));
+      messages.push({ role: "user", content: results });
+      continue;
+    }
+    // ada client-tool -> eksekusi server-tool yang menyertai, lalu kembali ke klien
+    const serverResults = [];
+    for (const tu of serverTU) serverResults.push(await runServerTool(tu));
+    return { done: false, content: data.content, messages, serverResults };
+  }
+  return { done: false, content: [{ type: "text", text: "Batas langkah server tercapai." }],
+           messages, serverResults: [] };
+}
+
 function handleAgent(req, res) {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -291,7 +341,7 @@ function handleAgent(req, res) {
         res.end(JSON.stringify({ error: "messages[] wajib diisi" }));
         return;
       }
-      const result = await callAgent(messages);
+      const result = await runAgentServerLoop(messages);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
     } catch (err) {

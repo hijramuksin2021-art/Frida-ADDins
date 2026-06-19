@@ -219,8 +219,8 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 
 | Fase | Isi | Status |
 |---|---|---|
-| **R0** | Ingestion: upload PDF/DOCX/TXT → parse → file store; panel Sumber + daftar KB; provider config embeddings | 🟡 BERJALAN |
-| **R1** | Chunk + embed (remote provider + lokal Xenova) + SQLite/sqlite-vec + search_uploaded_sources | ⬜ |
+| **R0** | Ingestion: upload PDF/DOCX/TXT → parse → file store; panel Sumber + daftar KB; provider config embeddings | ✅ SELESAI |
+| **R1** | Chunk + embed (lokal Xenova multilingual + remote pluggable) + vector store file + search_uploaded_sources + agent loop server/client | ✅ SELESAI |
 | **R2** | generate_paragraph_from_source + gate + atribusi + traceability | ⬜ |
 | **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ⬜ |
 | **R4** | resolve_source/alias, summarize_source, compare_sources | ⬜ |
@@ -230,6 +230,24 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 **Dependensi npm**: `pdf-parse` (v2, PDFParse.getText), `mammoth` (terpasang R0); R1: `better-sqlite3`+`sqlite-vec`, `@xenova/transformers`; R3: `citeproc-js`+file CSL.
 
 ---
+
+## R1 — Catatan implementasi (penting)
+- **Embeddings provider aerolink TIDAK ADA.** Probe `{baseUrl}/v1/embeddings` → 400
+  "model embeddings tidak didukung; tersedia: claude-*". Aerolink hanya relai Claude chat.
+  → Default **lokal** (`@xenova/transformers`, `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim).
+  Cross-lingual terbukti (cos ID↔EN = 0.91). Multi-provider remote (OpenAI-compatible) tetap
+  tersedia via `EMBED_*` di `.env`.
+- **Vector store**: berbasis file (`data/sources/<id>.chunks.json`) + cosine brute-force; cukup
+  utk ribuan chunk. sqlite-vec/pgvector saat skala lebih besar (interface dijaga).
+- **`runtime: server|client` pada registry** (kunci arsitektur). `/api/agent` kini **loop di
+  server**: tool RAG (server) dieksekusi di server; saat model memanggil tool Word (client),
+  server kembalikan ke task pane untuk `Word.run`. `messages` = sumber kebenaran dari server.
+- **Bug yang ditemukan & diperbaiki:** field `runtime` ikut terkirim ke Anthropic → 400
+  "Extra inputs are not permitted". Tools disanitasi ke `{name,description,input_schema}` sebelum
+  dikirim (`API_TOOLS`); `runtime` hanya metadata internal.
+- **Verifikasi nyata:** unggah sumber → "cari di sumber: kenapa reptil berdarah dingin?" →
+  server jalankan `search_uploaded_sources`, model menjawab **grounded** dari kutipan (ektotermik,
+  bergantung lingkungan) tanpa mengarang; perintah Word biasa tetap kembali ke klien.
 
 ## 17. Scalability
 1. Store pluggable (`VectorStore` interface): sqlite-vec → pgvector/Qdrant.

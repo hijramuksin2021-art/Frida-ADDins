@@ -467,6 +467,29 @@
     },
   };
 
+  // ---- Tool Research Copilot (R1) — dieksekusi di SERVER (runtime:"server") ----
+  const search_uploaded_sources = {
+    name: "search_uploaded_sources",
+    runtime: "server",
+    description:
+      "Cari informasi di dokumen/jurnal yang TELAH DIUNGGAH pengguna (basis pengetahuan). " +
+      "Kembalikan kutipan (chunk) paling relevan beserta source_id-nya. Gunakan SEBELUM menjawab " +
+      "pertanyaan berbasis sumber, atau saat diminta 'cari di sumber', 'berdasarkan jurnal X'. " +
+      "Jangan mengarang; hanya gunakan isi yang dikembalikan.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Pertanyaan/topik yang dicari." },
+        k: { type: "integer", default: 6, description: "Jumlah kutipan teratas." },
+        document_ids: {
+          type: "array", items: { type: "string" },
+          description: "Batasi ke sumber tertentu (source_id). Kosong = semua sumber.",
+        },
+      },
+      required: ["query"],
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
@@ -474,9 +497,30 @@
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
     insert_cover_page, format_business_proposal,
+    search_uploaded_sources,
   ];
 
-  return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS) };
+  // Pencocokan nama tahan-rename (provider kadang mengubah nama tool di respons).
+  function canon(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+  function resolveName(name) {
+    const byname = indexByName(SCHEMAS);
+    if (byname[name]) return name;
+    const target = canon(name);
+    let best = null;
+    SCHEMAS.forEach((s) => {
+      const ck = canon(s.name);
+      if (target.includes(ck) && (!best || ck.length > canon(best).length)) best = s.name;
+    });
+    return best;
+  }
+  // runtime tool: "server" | "client" (default client).
+  function runtimeOf(name) {
+    const real = resolveName(name);
+    const s = real ? indexByName(SCHEMAS)[real] : null;
+    return (s && s.runtime) || "client";
+  }
+
+  return { SCHEMAS, targetSchema, byName: indexByName(SCHEMAS), resolveName, runtimeOf };
 
   function indexByName(list) {
     const m = {};
