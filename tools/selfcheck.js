@@ -153,6 +153,65 @@ check(r3updated && r3updated.title === "R3 Updated", "updateMetadata title tidak
 store.remove(r3id);
 check(store.get(r3id) === null, "remove gagal: dokumen masih ada", "store.remove OK");
 
+// 8) R4: resolve_source (aliases) — unit-test tanpa butuh Word/server/LLM
+const { resolveSource, docKeywords, tokenize: aliasTokenize } = require("../rag/aliases");
+
+// Buat 2 dokumen tes untuk resolve
+const r4docA = store.save({
+  filename: "nair-2012-agroforestry.pdf", ext: "pdf", mime: "application/pdf",
+  hash: "r4-a-" + Date.now(),
+  title: "Manfaat agroforestri di daerah tropis", year: 2012,
+  confidence: "user", chars: 500,
+  csl: { author: [{ family: "Nair", given: "P.K.R." }], issued: { year: 2012 }, container: "Agroforestry Systems" },
+});
+const r4docB = store.save({
+  filename: "hijra-2020-keuangan.pdf", ext: "pdf", mime: "application/pdf",
+  hash: "r4-b-" + Date.now(),
+  title: "Keuangan Syariah di Era Digital", year: 2020,
+  confidence: "user", chars: 300,
+  csl: { author: [{ family: "Hijra", given: "A." }], issued: { year: 2020 }, container: "Jurnal Ekonomi Islam" },
+});
+
+// tokenize
+const toks = aliasTokenize("jurnal Hijra 2020");
+check(toks.includes("hijra"), "tokenize harus mengandung 'hijra'", "tokenize 'hijra' OK");
+check(toks.includes("2020"), "tokenize harus mengandung '2020'", "tokenize '2020' OK");
+
+// resolveSource — "jurnal Hijra" harus menemukan docB lebih tinggi dari docA
+const resHijra = resolveSource("jurnal Hijra 2020");
+check(resHijra.length >= 1, "resolveSource 'Hijra' tidak menemukan apa pun", "resolveSource Hijra menemukan kandidat");
+check(resHijra[0].doc.id === r4docB.id, "resolveSource 'Hijra' salah sumber (harus docB)", "resolveSource Hijra best_id benar");
+
+// resolveSource — "Nair 2012 agroforestri" harus menemukan docA
+const resNair = resolveSource("Nair 2012 agroforestri");
+check(resNair.length >= 1, "resolveSource 'Nair' tidak menemukan apa pun", "resolveSource Nair menemukan kandidat");
+check(resNair[0].doc.id === r4docA.id, "resolveSource 'Nair' salah sumber (harus docA)", "resolveSource Nair best_id benar");
+
+// resolveSource — query tak cocok = [] (skor 0)
+const resNone = resolveSource("zzz-tidak-ada-sumber-xyz");
+check(resNone.length === 0, "resolveSource query kosong seharusnya tidak menemukan apa pun", "resolveSource miss → [] OK");
+
+// docKeywords mencakup penulis + tahun
+const kwA = docKeywords(r4docA);
+check(kwA.has("nair"), "docKeywords harus mengandung author family 'nair'", "docKeywords author OK");
+check(kwA.has("2012"), "docKeywords harus mengandung tahun", "docKeywords tahun OK");
+check(kwA.has("agroforestri"), "docKeywords harus mengandung kata dari judul", "docKeywords judul OK");
+
+// cleanup R4 tes
+store.remove(r4docA.id);
+store.remove(r4docB.id);
+check(store.get(r4docA.id) === null, "remove R4 docA gagal", "remove R4 docA OK");
+check(store.get(r4docB.id) === null, "remove R4 docB gagal", "remove R4 docB OK");
+
+// schema R4: resolve_source/summarize_source/compare_sources harus terdaftar sebagai server
+const { SCHEMAS: allSchemas } = require("./schemas");
+const r4names = ["resolve_source", "summarize_source", "compare_sources"];
+r4names.forEach((n) => {
+  const s = allSchemas.find((x) => x.name === n);
+  check(s != null, "schema R4 '" + n + "' tidak terdaftar di SCHEMAS", "schema R4 '" + n + "' terdaftar");
+  check(s && s.runtime === "server", "schema R4 '" + n + "' harus runtime='server'", "schema R4 '" + n + "' runtime server");
+});
+
 // laporan
 console.log(`FRIDA tool registry selfcheck`);
 console.log(`  tools terdaftar : ${schemaNames.length} (${schemaNames.join(", ")})`);

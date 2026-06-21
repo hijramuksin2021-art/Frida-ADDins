@@ -6,6 +6,8 @@ const store = require("./store");
 const vectors = require("./vectors");
 const embeddings = require("./embeddings");
 const { generate_paragraph_from_source } = require("./generate");
+const { resolveSourceTool } = require("./aliases");               // R4
+const { summarize_source, compare_sources } = require("./summarize"); // R4
 
 const MAX_CHUNK_CHARS = 700; // batasi teks per hit agar hemat token
 
@@ -42,7 +44,28 @@ async function search_uploaded_sources(input) {
   };
 }
 
-const SERVER_TOOLS = { search_uploaded_sources, generate_paragraph_from_source };
+// R4: resolve_source — nama natural → document_id (tanpa embedding; scoring kata kunci)
+async function resolve_source(input) {
+  return resolveSourceTool(input || {});
+}
+
+// R4: summarize_source — ringkas 1 sumber via LLM (grounded ke teks sumber)
+async function summarize_source_tool(input) {
+  return summarize_source(input || {});
+}
+
+// R4: compare_sources — banding ≥2 sumber via LLM (grounded ke teks sumber)
+async function compare_sources_tool(input) {
+  return compare_sources(input || {});
+}
+
+const SERVER_TOOLS = {
+  search_uploaded_sources,
+  generate_paragraph_from_source,
+  resolve_source,           // R4
+  summarize_source,         // R4
+  compare_sources,          // R4
+};
 
 // Eksekusi satu tool server berdasarkan nama (sudah dikanonikkan oleh pemanggil).
 async function executeServerTool(name, input) {
@@ -53,3 +76,4 @@ async function executeServerTool(name, input) {
 }
 
 module.exports = { executeServerTool, SERVER_TOOLS };
+

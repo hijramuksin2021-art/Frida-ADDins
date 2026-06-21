@@ -571,6 +571,67 @@
     },
   };
 
+  // ---- Tool Research Copilot R4 — dieksekusi di SERVER (runtime:"server") ----
+
+  const resolve_source = {
+    name: "resolve_source",
+    runtime: "server",
+    description:
+      "Cari document_id sumber dari nama/referensi ALAMI pengguna (mis. 'jurnal Hijra', 'Nair 2012', " +
+      "'paper agroforestri'). Gunakan SEBELUM summarize_source atau compare_sources bila pengguna " +
+      "menyebut sumber dengan nama, bukan ID. Kembalikan best_id + daftar kandidat dengan skor relevansi.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Nama/referensi sumber secara alami, mis. 'jurnal Hijra 2020'." },
+        workspace: { type: "string", description: "Batasi ke workspace tertentu (opsional)." },
+        maxResults: { type: "integer", default: 3, description: "Maks kandidat yang dikembalikan." },
+      },
+      required: ["query"],
+    },
+  };
+
+  const summarize_source = {
+    name: "summarize_source",
+    runtime: "server",
+    description:
+      "Buat RINGKASAN satu sumber terunggah menggunakan LLM (grounded ke teks sumber). " +
+      "Gunakan untuk 'ringkas jurnal ini', 'apa isi paper X', 'jelaskan sumber Y'. " +
+      "Pastikan punya source_id (pakai resolve_source jika perlu). " +
+      "Hasil berisi judul, tahun, dan summary 3–5 kalimat.",
+    input_schema: {
+      type: "object",
+      properties: {
+        source_id: { type: "string", description: "ID sumber yang akan diringkas." },
+        aspect: { type: "string", description: "Fokus ringkasan opsional, mis. 'metodologi', 'hasil utama'." },
+        max_sentences: { type: "integer", description: "Maks jumlah kalimat ringkasan (default 5)." },
+      },
+      required: ["source_id"],
+    },
+  };
+
+  const compare_sources = {
+    name: "compare_sources",
+    runtime: "server",
+    description:
+      "Bandingkan 2–5 sumber terunggah: temukan kesamaan dan perbedaan via LLM (grounded). " +
+      "Gunakan untuk 'bandingkan jurnal A dan B', 'apa perbedaan ketiga paper ini'. " +
+      "Pastikan punya semua source_id (pakai resolve_source jika perlu). " +
+      "Hasil berisi paragraf perbandingan, poin kesamaan, dan poin perbedaan.",
+    input_schema: {
+      type: "object",
+      properties: {
+        source_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array source_id yang dibandingkan (minimal 2, maks 5).",
+        },
+        aspect: { type: "string", description: "Aspek perbandingan opsional, mis. 'metode', 'temuan', 'kesimpulan'." },
+      },
+      required: ["source_ids"],
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
@@ -579,6 +640,7 @@
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
     insert_cover_page, format_business_proposal, insert_citation, insert_bibliography,
     search_uploaded_sources, generate_paragraph_from_source,
+    resolve_source, summarize_source, compare_sources,  // R4
   ];
 
   // Pencocokan nama tahan-rename (provider kadang mengubah nama tool di respons).
@@ -609,3 +671,4 @@
     return m;
   }
 });
+

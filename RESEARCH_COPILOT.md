@@ -223,7 +223,7 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 | **R1** | Chunk + embed (lokal Xenova multilingual + remote pluggable) + vector store file + search_uploaded_sources + agent loop server/client | ✅ SELESAI |
 | **R2** | generate_paragraph_from_source + gate (skor retrieval) + verifikasi sitasi (primer/warisan, buang yang dikarang) + insert_paragraph | ✅ SELESAI |
 | **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ✅ SELESAI |
-| **R4** | resolve_source/alias, summarize_source, compare_sources | ⬜ |
+| **R4** | resolve_source/alias, summarize_source, compare_sources | ✅ SELESAI |
 | **R5** | Gaya MLA/Chicago/Harvard/IEEE, footnote, update-all via content control | ⬜ |
 | **R6** | Faithfulness/NLI verify, quote-check, kalibrasi ambang | ⬜ |
 
@@ -322,6 +322,73 @@ Sitasi **TIDAK PERNAH** ditulis LLM. Alur:
 > dengan `insert_citation` + `insert_bibliography` terintegrasi di registry tool, safety, dan selfcheck.
 > Eksekusi nyata (Word.run) membutuhkan sideload; logika render deterministik telah terverifikasi
 > unit-test. R4 (resolve_source/alias, summarize, compare) dan R5 (update-all via CC) menyusul.
+
+## R4 — Catatan implementasi (resolve, summarize, compare)
+Tiga tool baru: **resolve_source** (alias keyword), **summarize_source** (LLM grounded), **compare_sources** (LLM grounded).
+
+### Modul baru
+- **`rag/aliases.js`** — resolver nama alami → `document_id` **tanpa embedding** (cepat, tanpa latensi
+  jaringan). Strategi: scoring token kata kunci dari metadata dokumen (judul, penulis, filename, tahun,
+  container).
+  - `docKeywords(doc)` — ekstrak set token lowercase dari semua field metadata (termasuk `csl.author`,
+    `csl.container`, `doc.year`).
+  - `scoreDoc(doc, queryTokens)` — tiap token query: +3 cocok persis, +1 partial; +2 bonus tahun
+    eksplisit; +2 bonus penulis pertama cocok.
+  - `resolveSource(query, workspace)` — ranking skor turun, filter skor > 0.
+  - `resolveSourceTool(input)` — wrapper untuk dipanggil sebagai server tool; kembalikan `best_id`,
+    `matches[]` dengan skor, dan pesan jika tidak ada yang cocok.
+
+- **`rag/summarize.js`** — ringkasan dan perbandingan sumber via LLM (grounded ke teks sumber).
+  - `summarize_source({source_id, aspect?, max_sentences?})` — baca teks sumber (`store.get`),
+    potong 4000 char, panggil `callModel` dengan forced tool `submit_summary`. Anti-halusinasi:
+    prompt melarang menambah fakta di luar teks; output via tool terstruktur (bukan teks bebas).
+  - `compare_sources({source_ids, aspect?})` — baca teks tiap sumber (maks 5, 2500 char per sumber),
+    panggil `callModel` dengan forced tool `submit_comparison`. Output: `{comparison, similarities[],
+    differences[], source_ids, titles}`.
+  - Keduanya memakai `callModel` + `firstToolInput` dari `rag/llm.js` (retry 3x, timeout LLM).
+  - Teks kosong/sumber tak ditemukan → `{error}` (bukan error throw); model bisa baca & laporkan.
+
+### Update tool registry (schemas.js + agent_tools.js)
+- **3 schema baru** (`runtime:"server"`):
+  - `resolve_source` — `{query, workspace?, maxResults?}` → `{best_id, matches[], note}`
+  - `summarize_source` — `{source_id, aspect?, max_sentences?}` → `{source_id, title, year, summary}`
+  - `compare_sources` — `{source_ids[], aspect?}` → `{comparison, similarities[], differences[]}`
+- **`rag/agent_tools.js`**: import `aliases.js` + `summarize.js`; tambah 3 entri ke `SERVER_TOOLS`.
+- Total tool: **22 client + 5 server** = 27 tool dalam registry.
+
+### Update AGENT_SYSTEM_PROMPT (server.js)
+Panduan baru di prompt:
+- "Nama alami sumber" (`'jurnal Hijra'`, `'Nair 2012'`) → **pakai resolve_source DULU** → gunakan `best_id`.
+- 'Ringkas jurnal' → `summarize_source` (setelah resolve).
+- 'Bandingkan paper A dan B' → `compare_sources` (setelah resolve masing-masing).
+- `insert_citation` kini juga bisa pakai `source_id` dari `resolve_source`.
+
+### Alur kerja khas R4
+```
+"Ringkas jurnal Hijra":
+  resolve_source("Hijra") → best_id=src_abc
+  summarize_source(src_abc) → {summary}  ← grounded ke teks, anti-halusinasi
+  → sampaikan ringkasan ke pengguna
+
+"Bandingkan paper Nair 2012 dan jurnal Hijra":
+  resolve_source("Nair 2012") → best_id=src_xyz
+  resolve_source("Hijra") → best_id=src_abc
+  compare_sources([src_xyz, src_abc]) → {comparison, similarities, differences}
+  → sampaikan perbandingan ke pengguna
+```
+
+### Selfcheck (tools/selfcheck.js)
+- Tambah **27 cek R4** (149 → **176 cek** total):
+  - `tokenize`: cek lowercase + tokenisasi benar.
+  - `resolveSource` 3 skenario: match Hijra, match Nair+tahun+topik, query miss → `[]`.
+  - `docKeywords`: verifikasi author family, tahun, dan kata judul ter-include.
+  - Schema: 3 nama R4 terdaftar di SCHEMAS dengan `runtime='server'`.
+  - Cleanup tes: `store.remove` berhasil (2 dokumen tes).
+
+> **STATUS R4: SELESAI.** resolve_source (scoring keyword, tanpa embedding), summarize_source, dan
+> compare_sources (LLM grounded via forced tool) fungsional di server loop. summarize/compare
+> membutuhkan API key aktif untuk LLM call; resolve_source dapat diuji offline (unit-test 176 cek
+> semua lulus). R5 (update-all via Content Control, gaya footnote) menyusul.
 
 ## 17. Scalability
 1. Store pluggable (`VectorStore` interface): sqlite-vec → pgvector/Qdrant.
