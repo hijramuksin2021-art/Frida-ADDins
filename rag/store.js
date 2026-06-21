@@ -44,6 +44,7 @@ function save(doc) {
     year: doc.year || null,
     doi: doc.doi || null,
     confidence: doc.confidence || "low",
+    csl: doc.csl || null,        // metadata sitasi (CSL-JSON-ish)
     pages: doc.pages || null,
     chars: doc.chars || (doc.text ? doc.text.length : 0),
     workspace: doc.workspace || "default",
@@ -68,6 +69,26 @@ function get(id) {
   catch (_) { return null; }
 }
 
+// Perbarui metadata CSL (koreksi pengguna). patch = sebagian field CSL + opsional title/year.
+function updateMetadata(id, csl) {
+  const full = get(id);
+  if (!full) return null;
+  full.csl = Object.assign({}, full.csl, csl);
+  if (full.csl.title) full.title = full.csl.title;
+  if (full.csl.issued && full.csl.issued.year) full.year = full.csl.issued.year;
+  full.confidence = "user";
+  fs.writeFileSync(path.join(ROOT, id + ".json"), JSON.stringify(full, null, 2));
+  // sinkron ke index
+  const list0 = readIndex();
+  const i = list0.findIndex((d) => d.id === id);
+  if (i >= 0) {
+    list0[i].csl = full.csl; list0[i].title = full.title;
+    list0[i].year = full.year; list0[i].confidence = "user";
+    writeIndex(list0);
+  }
+  return full.csl;
+}
+
 function remove(id) {
   const list0 = readIndex();
   const next = list0.filter((d) => d.id !== id);
@@ -77,4 +98,4 @@ function remove(id) {
   return true;
 }
 
-module.exports = { save, list, get, remove, findByHash, sha256, ROOT };
+module.exports = { save, list, get, remove, findByHash, sha256, updateMetadata, ROOT };

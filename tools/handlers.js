@@ -600,6 +600,55 @@
              style: args.style || null, method: bordersApplied ? "ooxml" : "style" };
   }
 
+  // ---- Tool: insert_citation (client; string sitasi dari SERVER) ----
+  async function insert_citation(context, args) {
+    const resp = await fetch("/api/sources/cite", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_id: args.source_id, style: args.style || "APA7",
+                             page: args.page, narrative: !!args.narrative }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.text) return { error: data.error || "sitasi tak tersedia (metadata sumber kosong?)" };
+    const sel = context.document.getSelection();
+    const r = sel.getRange(Word.RangeLocation.end).insertText(data.text, Word.InsertLocation.end);
+    // tandai dgn content control utk update massal nanti (R5)
+    try { const cc = r.insertContentControl(); cc.tag = "frida-cite:" + args.source_id + ":" + (args.style || "APA7"); cc.title = "FRIDA Citation"; }
+    catch (e) { /* host lama: lewati */ }
+    await context.sync();
+    return { ok: true, citation: data.text };
+  }
+
+  // ---- Tool: insert_bibliography (client; entri dari SERVER) ----
+  async function insert_bibliography(context, args) {
+    const resp = await fetch("/api/sources/bibliography", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_ids: args.source_ids, style: args.style || "APA7" }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) return { error: data.error || "gagal membuat daftar pustaka" };
+    const entries = data.entries || [];
+    if (!entries.length) return { error: "Tak ada sumber dengan metadata lengkap untuk daftar pustaka. Lengkapi metadata dulu." };
+    const body = context.document.body;
+    const h = body.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.end);
+    try { h.styleBuiltIn = Word.BuiltInStyleName.heading1; } catch (e) {}
+    entries.forEach((e) => {
+      const p = body.insertParagraph("", Word.InsertLocation.end);
+      insertRichItalic(p, e.text); // render *...* sebagai miring
+    });
+    await context.sync();
+    return { ok: true, count: entries.length, style: args.style || "APA7" };
+  }
+
+  // Sisipkan teks ber-penanda *miring* ke paragraf (selang-seling normal/italic).
+  function insertRichItalic(paragraph, text) {
+    const parts = String(text || "").split("*");
+    parts.forEach((seg, i) => {
+      if (!seg) return;
+      const r = paragraph.insertText(seg, Word.InsertLocation.end);
+      if (i % 2 === 1) { try { r.font.italic = true; } catch (e) {} }
+    });
+  }
+
   // ---- Tool composite: insert_cover_page (write) ----
   async function insert_cover_page(context, args) {
     const body = context.document.body;
@@ -721,6 +770,8 @@
     format_table,
     insert_cover_page,
     format_business_proposal,
+    insert_citation,
+    insert_bibliography,
   };
 
   // ---- Pemetaan nama tool yang andal ----
@@ -799,6 +850,11 @@
           return "sisip daftar isi di " + (input.location === "selection" ? "kursor" : "awal");
         case "set_track_changes":
           return "track changes → " + input.mode;
+        case "insert_citation":
+          return "sisip sitasi " + (input.style || "APA7") + " (sumber " + (input.source_id || "?") + ")";
+        case "insert_bibliography":
+          return "daftar pustaka " + (input.style || "APA7") +
+            (input.source_ids && input.source_ids.length ? " (" + input.source_ids.length + " sumber)" : " (semua sumber)");
         case "insert_cover_page":
           return "halaman sampul: \"" + String(input.title || "").slice(0, 40) + "\"";
         case "format_business_proposal": {

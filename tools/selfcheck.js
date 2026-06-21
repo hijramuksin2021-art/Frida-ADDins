@@ -96,6 +96,63 @@ const a = makeAuditLog();
 a.record({ name: "format_text", input: {} }, { applied: 3 }, false);
 check(a.entries.length === 1 && a.entries[0].ok === true, "AuditLog gagal mencatat entri");
 
+// 7) R3: CSL citation engine — unit-test deterministik (tanpa butuh Word/server)
+const csl = require("../rag/csl");
+const store = require("../rag/store");
+const cite = require("../rag/cite");
+
+const r3meta = {
+  type: "article-journal",
+  title: "Selfcheck R3 Citation",
+  author: [{ family: "Doe", given: "J." }, { family: "Smith", given: "A." }],
+  issued: { year: 2024 },
+  container: "Test Journal",
+  volume: "1", issue: "2", page: "10-20",
+  DOI: "10.1234/test.2024",
+};
+// normStyle
+check(csl.normStyle("apa7") === "APA7", "normStyle 'apa7' → APA7 gagal", "normStyle APA7 OK");
+check(csl.normStyle("IEEE") === "IEEE", "normStyle 'IEEE' gagal", "normStyle IEEE OK");
+// inText — semua 5 gaya
+const it_apa = csl.inText(r3meta, "APA7", {});
+check(it_apa === "(Doe & Smith, 2024)", "inText APA7 format salah: " + it_apa, "inText APA7 OK");
+const it_mla = csl.inText(r3meta, "MLA", {});
+check(it_mla.includes("Doe"), "inText MLA harus mengandung 'Doe'", "inText MLA OK");
+const it_chi = csl.inText(r3meta, "Chicago", {});
+check(it_chi.includes("2024"), "inText Chicago harus mengandung tahun", "inText Chicago OK");
+const it_har = csl.inText(r3meta, "Harvard", { page: "p.5" });
+check(it_har.includes("p. 5") || it_har.includes("p.5"), "inText Harvard+page format salah: " + it_har, "inText Harvard+page OK");
+const it_ieee = csl.inText(r3meta, "IEEE", { number: 7 });
+check(it_ieee === "[7]", "inText IEEE format salah: " + it_ieee, "inText IEEE OK");
+// bibEntry
+const bib_apa = csl.bibEntry(r3meta, "APA7");
+check(bib_apa.includes("doi.org"), "bibEntry APA7 harus mengandung DOI URL", "bibEntry APA7 DOI OK");
+check(bib_apa.includes("(2024)"), "bibEntry APA7 harus mengandung tahun", "bibEntry APA7 tahun OK");
+
+// store + cite pipeline (tulis & hapus doc tes)
+const r3doc = store.save({
+  filename: "selfcheck-r3.pdf", ext: "pdf", mime: "application/pdf",
+  hash: "selfcheck-r3-" + Date.now(),
+  title: r3meta.title, year: 2024, confidence: "user", csl: r3meta, chars: 100,
+});
+const r3id = r3doc.id;
+const citeIT = cite.inTextFor(r3id, "APA7", {});
+check(citeIT === "(Doe & Smith, 2024)", "cite.inTextFor APA7 gagal: " + citeIT, "cite.inTextFor APA7 OK");
+const citeEntry = cite.entryFor(r3id, "MLA");
+check(typeof citeEntry === "string" && citeEntry.length > 5, "cite.entryFor MLA kosong", "cite.entryFor MLA OK");
+const citeBibs = cite.bibliography([r3id], "APA7");
+check(citeBibs.length === 1 && citeBibs[0].source_id === r3id, "cite.bibliography gagal", "cite.bibliography OK");
+
+// updateMetadata lalu verifikasi confidence = 'user'
+store.updateMetadata(r3id, { title: "R3 Updated" });
+const r3updated = store.get(r3id);
+check(r3updated && r3updated.confidence === "user", "updateMetadata confidence harus 'user'", "updateMetadata confidence OK");
+check(r3updated && r3updated.title === "R3 Updated", "updateMetadata title tidak tersinkron", "updateMetadata title OK");
+
+// cleanup
+store.remove(r3id);
+check(store.get(r3id) === null, "remove gagal: dokumen masih ada", "store.remove OK");
+
 // laporan
 console.log(`FRIDA tool registry selfcheck`);
 console.log(`  tools terdaftar : ${schemaNames.length} (${schemaNames.join(", ")})`);

@@ -112,6 +112,13 @@ button:disabled { opacity: .6; cursor: default; }
 .src-warn { font-size: 10px; color: #92400e; background: #fef3c7; border-radius: 4px; padding: 0 4px; font-weight: 400; }
 .src-del { width: auto; margin: 0; padding: 2px 7px; font-size: 12px; border-radius: 4px; background: #fff; color: #b91c1c; border-color: #f0d0d0; }
 .src-del:hover { background: #fef2f2; }
+.src-edit { width: auto; margin: 0; padding: 2px 7px; font-size: 12px; border-radius: 4px; background: #fff; color: #c2410c; border-color: #f0d8c0; }
+.src-edit:hover { background: #fff7ed; }
+.src-edit-form { flex-basis: 100%; }
+.ef { background: #fff; border: 1px solid #eee; border-radius: 6px; padding: 8px; margin: 4px 0 8px; }
+.ef-l { display: block; font-size: 11px; color: #555; font-weight: 600; margin: 4px 0; }
+.ef-i { width: 100%; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; font-weight: 400; }
+.ef-save { width: 100%; margin-top: 8px; padding: 6px; font-size: 12px; background: #c2410c; color: #fff; border-color: #c2410c; }
 .src-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .src-reindex { width: auto; margin: 0; padding: 4px 10px; font-size: 12px; }
 .src-embed { font-size: 11px; color: #888; }

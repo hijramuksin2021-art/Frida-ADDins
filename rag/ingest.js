@@ -7,6 +7,7 @@ const store = require("./store");
 const chunker = require("./chunk");
 const vectors = require("./vectors");
 const embeddings = require("./embeddings");
+const metadata = require("./metadata");
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 const EMBED_BATCH = 32;
@@ -58,10 +59,18 @@ async function ingestUpload({ filename, mime, dataBase64, workspace }) {
     throw new Error("Tidak ada teks yang bisa diekstrak (mungkin PDF hasil scan/gambar).");
   }
 
+  // Metadata sitasi (CSL): DOI->Crossref bila ada, else tebakan lokal.
+  let meta;
+  try { meta = await metadata.build({ filename, text: parsed.text, parsedMeta: parsed.meta }); }
+  catch (_) { meta = { csl: null, confidence: parsed.meta.confidence }; }
+
   const doc = store.save({
     filename, ext, mime: mime || parse.EXT[ext], hash,
-    title: parsed.meta.title, year: parsed.meta.year, doi: parsed.meta.doi,
-    confidence: parsed.meta.confidence, pages: parsed.pages, chars: parsed.chars,
+    title: (meta.csl && meta.csl.title) || parsed.meta.title,
+    year: (meta.csl && meta.csl.issued && meta.csl.issued.year) || parsed.meta.year,
+    doi: parsed.meta.doi,
+    confidence: meta.confidence, csl: meta.csl,
+    pages: parsed.pages, chars: parsed.chars,
     text: parsed.text, workspace: workspace || "default",
   });
 

@@ -534,13 +534,50 @@
     },
   };
 
+  // ---- Tool sitasi (R3) — CLIENT (sisip ke Word), tapi STRING sitasi dibuat server ----
+  const insert_citation = {
+    name: "insert_citation",
+    runtime: "client",
+    description:
+      "Sisipkan SITASI in-text dari sumber terunggah di posisi kursor (gaya APA7/MLA/Chicago/Harvard/IEEE). " +
+      "String sitasi dibuat server dari metadata terverifikasi — Anda HANYA memberi source_id (BUKAN menulis " +
+      "sendiri nama/tahun). Dapatkan source_id dari search_uploaded_sources atau generate_paragraph_from_source.",
+    input_schema: {
+      type: "object",
+      properties: {
+        source_id: { type: "string", description: "ID sumber (dari hasil pencarian/generate)." },
+        style: { type: "string", enum: ["APA7", "MLA", "Chicago", "Harvard", "IEEE"], default: "APA7" },
+        page: { type: "string", description: "Nomor halaman opsional, mis. '12'." },
+        narrative: { type: "boolean", description: "true = gaya naratif (Penulis (tahun)) bukan dalam kurung." },
+      },
+      required: ["source_id", "style"],
+    },
+  };
+
+  const insert_bibliography = {
+    name: "insert_bibliography",
+    runtime: "client",
+    description:
+      "Sisipkan DAFTAR PUSTAKA di akhir dokumen dari sumber terunggah (semua atau tertentu) dalam gaya " +
+      "yang diminta. Entri dibuat server dari metadata terverifikasi. Gunakan untuk 'buat daftar pustaka' / " +
+      "'generate bibliography'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        style: { type: "string", enum: ["APA7", "MLA", "Chicago", "Harvard", "IEEE"], default: "APA7" },
+        source_ids: { type: "array", items: { type: "string" }, description: "Batasi ke sumber tertentu (kosong = semua)." },
+        title: { type: "string", default: "Daftar Pustaka", description: "Judul daftar pustaka." },
+      },
+    },
+  };
+
   // Daftar final (urutan = urutan yang dikirim ke LLM).
   const SCHEMAS = [
     get_document_outline, format_text, replace_text,
     set_page_layout, format_paragraph, apply_style, insert_break, insert_paragraph,
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
-    insert_cover_page, format_business_proposal,
+    insert_cover_page, format_business_proposal, insert_citation, insert_bibliography,
     search_uploaded_sources, generate_paragraph_from_source,
   ];
 

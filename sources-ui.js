@@ -110,18 +110,76 @@
       box.innerHTML = items.map((s) => {
         const meta = [s.ext.toUpperCase(), s.year || null, s.pages ? s.pages + " hal" : null,
           Math.round((s.chars || 0) / 1000) + "k char"].filter(Boolean).join(" · ");
-        const conf = s.confidence === "low"
-          ? '<span class="src-warn" title="Metadata tebakan — perlu dikonfirmasi nanti">metadata?</span>' : "";
+        const conf = (s.confidence === "low" || s.confidence === "medium")
+          ? '<span class="src-warn" title="Metadata tebakan — klik ✎ untuk koreksi sebelum menyitir">metadata?</span>' : "";
         return '<div class="src-item" data-id="' + s.id + '">' +
           '<div class="src-main"><div class="src-title">' + esc(s.title || s.filename) + " " + conf + "</div>" +
           '<div class="src-meta">' + esc(meta) + "</div></div>" +
-          '<button class="src-del" data-id="' + s.id + '" title="Hapus">✕</button></div>';
+          '<button class="src-edit" data-id="' + s.id + '" title="Edit metadata sitasi">✎</button>' +
+          '<button class="src-del" data-id="' + s.id + '" title="Hapus">✕</button></div>' +
+          '<div class="src-edit-form" id="ef-' + s.id + '"></div>';
       }).join("");
       box.querySelectorAll(".src-del").forEach((b) =>
         (b.onclick = () => removeSource(b.getAttribute("data-id"))));
+      box.querySelectorAll(".src-edit").forEach((b) =>
+        (b.onclick = () => toggleEdit(b.getAttribute("data-id"), items)));
     } catch (err) {
       box.innerHTML = '<div class="src-empty">Gagal memuat daftar sumber.</div>';
     }
+  }
+
+  // ---- editor metadata sitasi ----
+  function toggleEdit(id, items) {
+    const box = document.getElementById("ef-" + id);
+    if (!box) return;
+    if (box.innerHTML) { box.innerHTML = ""; return; } // tutup bila terbuka
+    const s = (items || []).find((x) => x.id === id) || {};
+    const csl = s.csl || {};
+    const a0 = (csl.author && csl.author[0]) || {};
+    const f = (label, key, val) =>
+      '<label class="ef-l">' + label + '<input class="ef-i" data-k="' + key + '" value="' + esc(val || "") + '"/></label>';
+    box.innerHTML =
+      '<div class="ef">' +
+      f("Judul", "title", csl.title || s.title) +
+      f("Penulis (nama belakang)", "family", a0.family) +
+      f("Penulis (nama depan)", "given", a0.given) +
+      f("Tahun", "year", (csl.issued && csl.issued.year) || s.year) +
+      '<label class="ef-l">Tipe<select class="ef-i" data-k="type">' +
+      ["article-journal", "thesis", "book", "chapter", "paper-conference"].map((t) =>
+        '<option value="' + t + '"' + (csl.type === t ? " selected" : "") + ">" + t + "</option>").join("") +
+      "</select></label>" +
+      f("Jurnal/Penerbit (container)", "container", csl.container) +
+      f("Volume", "volume", csl.volume) + f("Issue", "issue", csl.issue) +
+      f("Halaman", "page", csl.page) + f("Institusi (skripsi)", "institution", csl.institution) +
+      f("DOI", "DOI", csl.DOI) +
+      '<button class="ef-save" data-id="' + id + '">Simpan metadata</button>' +
+      "</div>";
+    box.querySelector(".ef-save").onclick = () => saveMetadata(id, box);
+  }
+
+  async function saveMetadata(id, box) {
+    const vals = {};
+    box.querySelectorAll(".ef-i").forEach((el) => (vals[el.getAttribute("data-k")] = el.value.trim()));
+    const csl = {
+      type: vals.type || "article-journal",
+      title: vals.title || null,
+      author: vals.family ? [{ family: vals.family, given: vals.given }] : [],
+      issued: { year: vals.year ? Number(vals.year) : null },
+      container: vals.container || null,
+      volume: vals.volume || null, issue: vals.issue || null, page: vals.page || null,
+      institution: vals.institution || null, DOI: vals.DOI || null,
+    };
+    srcStatus("Menyimpan metadata…");
+    try {
+      const r = await fetch("/api/sources/" + id + "/metadata", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csl }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "gagal");
+      srcStatus("Metadata tersimpan — sitasi siap dipakai.", "ok");
+      box.innerHTML = "";
+      refreshList();
+    } catch (err) { srcStatus("Gagal simpan: " + (err.message || err), "err"); }
   }
 
   async function removeSource(id) {

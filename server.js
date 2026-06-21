@@ -27,6 +27,7 @@ const ingest = require("./rag/ingest");
 const sourceStore = require("./rag/store");
 const embeddings = require("./rag/embeddings");
 const vectors = require("./rag/vectors");
+const cite = require("./rag/cite");
 
 // ---- konfigurasi: env DULU, lalu config.json sbg fallback (nilai non-rahasia) ----
 // API key TIDAK boleh disimpan di config.json yang ter-commit. Taruh di .env / env OS.
@@ -242,6 +243,7 @@ const AGENT_SYSTEM_PROMPT = [
   "- Pertanyaan/RINGKASAN yang merujuk dokumen/jurnal yang DIUNGGAH ('cari di sumber', 'ringkas jurnal ini', 'menurut paper terunggah') -> panggil search_uploaded_sources DULU, lalu jawab HANYA berdasarkan kutipan (sertakan source_id). JANGAN mengarang.",
   "- MENULIS/MENAMBAH PARAGRAF berbasis sumber ('tambahkan paragraf tentang X berdasarkan jurnal', 'tulis paragraf dari sumber') -> WAJIB pakai generate_paragraph_from_source (jangan menulis paragraf sendiri). Bila hasilnya needsMoreEvidence=true, sampaikan ke pengguna bahwa bukti tak cukup dan JANGAN menyisipkan apa pun. Bila ada paragraf, sisipkan dengan insert_paragraph memakai field 'paragraph' apa adanya, lalu beri tahu pengguna sumber/sitasi (verifiedCitations) dan peringatan bila ada flaggedCitations.",
   "Jika search_uploaded_sources tak mengembalikan kutipan relevan, katakan terus terang bahwa bukti di sumber tak cukup — jangan mengarang.",
+  "- SITASI ('sisipkan sitasi APA7', 'kasih sitasi') -> insert_citation dengan source_id (dapatkan source_id dari hasil search_uploaded_sources/generate_paragraph_from_source — JANGAN menulis nama/tahun sendiri). 'buat daftar pustaka'/'bibliography' -> insert_bibliography. Jika tool sitasi mengembalikan error metadata kosong, beri tahu pengguna untuk melengkapi/mengoreksi metadata sumber di panel Sumber.",
   "Jika sebuah tool mengembalikan error, JANGAN mengulang tool yang sama berkali-kali; baca pesan error, perbaiki argumen, atau laporkan ke pengguna dengan teks.",
   "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",
   "Jangan mengubah bagian yang tidak diminta. Pertahankan bahasa dokumen.",
@@ -403,6 +405,28 @@ async function handleSources(req, res) {
       return sendJson(res, 200, {
         hits: hits.map((h) => ({ ...h, title: titles[h.document_id] || null })),
       });
+    }
+    // POST /api/sources/cite  { source_id, style, page, narrative }
+    if (req.method === "POST" && url === "/api/sources/cite") {
+      const b = JSON.parse((await readBody(req)) || "{}");
+      const text = cite.inTextFor(b.source_id, b.style || "APA7",
+        { page: b.page, narrative: b.narrative });
+      if (text == null) return sendJson(res, 404, { error: "metadata sumber kosong; lengkapi dulu metadata." });
+      return sendJson(res, 200, { text });
+    }
+    // POST /api/sources/bibliography  { source_ids, style }
+    if (req.method === "POST" && url === "/api/sources/bibliography") {
+      const b = JSON.parse((await readBody(req)) || "{}");
+      const entries = cite.bibliography(b.source_ids, b.style || "APA7");
+      return sendJson(res, 200, { entries });
+    }
+    // PATCH /api/sources/:id/metadata  { csl }
+    if (req.method === "PATCH" && /^\/api\/sources\/[\w-]+\/metadata$/.test(url)) {
+      const id = url.split("/")[3];
+      const b = JSON.parse((await readBody(req)) || "{}");
+      const csl2 = sourceStore.updateMetadata(id, b.csl || {});
+      if (!csl2) return sendJson(res, 404, { error: "sumber tak ditemukan" });
+      return sendJson(res, 200, { csl: csl2 });
     }
     // DELETE /api/sources/:id
     if (req.method === "DELETE" && /^\/api\/sources\/[\w-]+$/.test(url)) {

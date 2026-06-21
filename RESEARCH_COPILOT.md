@@ -222,7 +222,7 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 | **R0** | Ingestion: upload PDF/DOCX/TXT → parse → file store; panel Sumber + daftar KB; provider config embeddings | ✅ SELESAI |
 | **R1** | Chunk + embed (lokal Xenova multilingual + remote pluggable) + vector store file + search_uploaded_sources + agent loop server/client | ✅ SELESAI |
 | **R2** | generate_paragraph_from_source + gate (skor retrieval) + verifikasi sitasi (primer/warisan, buang yang dikarang) + insert_paragraph | ✅ SELESAI |
-| **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ⬜ |
+| **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ✅ SELESAI |
 | **R4** | resolve_source/alias, summarize_source, compare_sources | ⬜ |
 | **R5** | Gaya MLA/Chicago/Harvard/IEEE, footnote, update-all via content control | ⬜ |
 | **R6** | Faithfulness/NLI verify, quote-check, kalibrasi ambang | ⬜ |
@@ -264,6 +264,64 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 - **Verifikasi nyata:** "tambahkan paragraf manfaat agroforestri berdasarkan jurnal" → server
   generate (grounded, `(Nair, 2012)` terverifikasi & dipertahankan) → agent `insert_paragraph`.
   Sitasi PRIMER (format APA/dll dari metadata dokumen) menyusul di R3.
+
+## R3 — Catatan implementasi (Citation engine, 5 gaya)
+Tiga komponen inti: **formatter deterministik**, **Crossref lookup**, **tool Word penyisip**.
+
+### Modul baru/diperluas
+- **`rag/csl.js`** — formatter sitasi deterministik dari metadata CSL-JSON-ish. 5 gaya:
+  APA7, MLA, Chicago, Harvard, IEEE. Fungsi: `inText(meta, style, opts)` (in-text, narrative,
+  locator/page), `bibEntry(meta, style)` (entry daftar pustaka), `surnameLabel` (et al. rules
+  per gaya), `italic` (penanda `*...*`; renderer klien bisa memiringkan). Ringan (tanpa dep
+  eksternal); interface CSL-JSON agar mudah dipindah ke citeproc-js nanti.
+- **`rag/crossref.js`** — `fetchByDoi(doi)`: fetch metadata resmi dari Crossref API
+  (`api.crossref.org/works/{doi}`) → mapping ke format internal CSL-JSON-ish. Timeout 8s,
+  User-Agent benar, gagal → null (pakai tebakan lokal). Mapping type:
+  `journal-article` → `article-journal`, dll.
+- **`rag/cite.js`** — jembatan store↔CSL. `inTextFor(id, style, opts)`,
+  `entryFor(id, style)`, `bibliography(ids, style)` — semua dari metadata terverifikasi di
+  store, bukan LLM. Bibliography author-date → urut alfabet; IEEE → urut input.
+- **`rag/store.js`** (diperluas R0) — field `csl` + `confidence` sudah ada sejak R0.
+  `updateMetadata(id, cslPatch)` mensinkronkan title/year ke index setelah edit.
+
+### Endpoint baru di server.js
+- **`POST /api/sources/cite`** `{source_id, style, page, narrative}` → `{text}` — string
+  sitasi in-text dari metadata terverifikasi. Error 404 bila `csl` kosong.
+- **`POST /api/sources/bibliography`** `{source_ids, style}` → `{entries:[{source_id,text}]}`
+  — render daftar pustaka untuk beberapa sumber.
+- **`PATCH /api/sources/:id/metadata`** `{csl}` → edit metadata sitasi sumber (sudah R0).
+
+### Tool Word baru (client-side, tools/)
+- **`insert_citation`** — fetch string sitasi dari `/api/sources/cite`, sisipkan di posisi
+  kursor (akhir seleksi), bungkus dalam ContentControl bertag `frida-cite:{id}:{style}` untuk
+  update massal (R5). Error bila metadata kosong → arahkan pengguna ke panel Sumber.
+- **`insert_bibliography`** — fetch entries dari `/api/sources/bibliography`, sisipkan heading
+  "Daftar Pustaka" + tiap entry dengan render `*...*` sebagai teks miring (`insertRichItalic`).
+  Tanda `*` di tengah string = italic (sesuai penanda csl.js).
+
+### UI metadata edit (sources-ui.js)
+- Tombol **✎** per sumber → form inline: Judul, Penulis (family/given), Tahun, Tipe,
+  Jurnal/Penerbit, Volume, Issue, Halaman, Institusi, DOI. `PATCH /api/sources/:id/metadata` →
+  `confidence='user'` → kartu sumber tidak lagi menampilkan badge `metadata?`.
+- Sumber dengan `confidence='low'/'medium'` tampilkan badge ⚠️ `metadata?` sebagai peringatan
+  agar pengguna konfirmasi sebelum menyitir.
+
+### Selfcheck (tools/selfcheck.js)
+- Tambah **15 cek R3** (134 → **149 cek** total): normStyle 5 gaya; inText 5 gaya
+  (termasuk locator/page); bibEntry APA7 dengan DOI URL; pipeline store→cite end-to-end
+  (`inTextFor`, `entryFor`, `bibliography`); updateMetadata (confidence, title sync); remove.
+
+### Prinsip anti-halusinasi (KUNCI)
+Sitasi **TIDAK PERNAH** ditulis LLM. Alur:
+1. Model menyebut `source_id` (dari hasil `search_uploaded_sources` / `generate_paragraph_from_source`)
+2. Agent memanggil `insert_citation` → handler fetch `/api/sources/cite` → `csl.inText(doc.csl, style)`
+3. String sitasi = output **kode deterministik** dari metadata terverifikasi (Crossref atau dikoreksi pengguna)
+4. LLM tidak punya jalur mengarang nama/tahun/judul
+
+> **STATUS R3: SELESAI.** Citation engine 5 gaya (APA7, MLA, Chicago, Harvard, IEEE) fungsional
+> dengan `insert_citation` + `insert_bibliography` terintegrasi di registry tool, safety, dan selfcheck.
+> Eksekusi nyata (Word.run) membutuhkan sideload; logika render deterministik telah terverifikasi
+> unit-test. R4 (resolve_source/alias, summarize, compare) dan R5 (update-all via CC) menyusul.
 
 ## 17. Scalability
 1. Store pluggable (`VectorStore` interface): sqlite-vec → pgvector/Qdrant.
