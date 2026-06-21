@@ -44,6 +44,17 @@ Office.onReady((info) => {
   document.getElementById("instruction").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSend(); }
   });
+
+  // Tab navigation
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+      tab.classList.add("active");
+      const target = tab.getAttribute("data-tab");
+      document.getElementById("tab-" + target).classList.add("active");
+    });
+  });
 });
 
 // ---------- UI helpers ----------
@@ -60,16 +71,46 @@ function busy(on) {
 function logEl() { return document.getElementById("log"); }
 function scrollDown() { const l = logEl(); l.scrollTop = l.scrollHeight; }
 
-function addBubble(role, html) {
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderMarkdown(text) {
+  let out = escapeHtml(String(text || ""));
+  out = out.replace(/```([\s\S]*?)```/g, '<pre class="md-codeblock"><code>$1</code></pre>');
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  out = out.replace(/\n/g, '<br />');
+  return out;
+}
+
+let typingBubble = null;
+function showTypingIndicator() {
+  if (typingBubble) return typingBubble;
+  typingBubble = document.createElement("div");
+  typingBubble.className = "msg assistant typing";
+  typingBubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div><div class="typing-text">FRIDA sedang berpikir...</div>';
+  logEl().appendChild(typingBubble);
+  scrollDown();
+  return typingBubble;
+}
+function hideTypingIndicator() {
+  if (typingBubble) {
+    typingBubble.remove();
+    typingBubble = null;
+  }
+}
+
+function addBubble(role, text) {
   const div = document.createElement("div");
   div.className = "msg " + role;
-  div.innerHTML = html;
+  const raw = String(text || "");
+  const content = role === "assistant" ? renderMarkdown(raw) : escapeHtml(raw).replace(/\n/g, "<br />");
+  div.innerHTML = '<div class="msg-body">' + content + '</div>';
   logEl().appendChild(div);
   scrollDown();
   return div;
-}
-function escapeHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // ---------- alur utama ----------
@@ -79,19 +120,21 @@ async function onSend() {
   const text = input.value.trim();
   if (!text) { setStatus("Tulis dulu perintahnya untuk FRIDA.", "err"); return; }
 
-  addBubble("user", escapeHtml(text));
+  addBubble("user", text);
   messages.push({ role: "user", content: text });
   input.value = "";
 
   busy(true);
   setStatus("FRIDA berpikir…");
+  showTypingIndicator();
   try {
     await runAgentLoop();
     setStatus("Selesai.", "ok");
   } catch (err) {
     setStatus("Gagal: " + (err.message || err), "err");
-    addBubble("error", "⚠️ " + escapeHtml(err.message || String(err)));
+    addBubble("error", "⚠️ " + (err.message || String(err)));
   } finally {
+    hideTypingIndicator();
     busy(false);
   }
 }
@@ -121,7 +164,7 @@ async function runAgentLoop() {
 
     // tampilkan teks asisten
     content.filter((b) => b.type === "text" && b.text && b.text.trim())
-           .forEach((b) => addBubble("assistant", escapeHtml(b.text)));
+           .forEach((b) => addBubble("assistant", b.text));
 
     // tampilkan aktivitas tool server (mis. pencarian sumber) sbg info
     const serverResults = Array.isArray(data.serverResults) ? data.serverResults : [];

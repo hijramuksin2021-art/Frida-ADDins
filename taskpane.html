@@ -8,81 +8,113 @@
   <link rel="stylesheet" href="taskpane.css" />
 </head>
 <body>
-  <header>
-    <img src="assets/frida-logo.png" alt="FRIDA" class="logo" />
-    <h1>FRIDA</h1>
-    <p class="sub">Agen Word — beri perintah, FRIDA yang mengerjakan</p>
+  <header class="app-header">
+    <div class="logo-container">
+      <img src="assets/frida-logo.png" alt="FRIDA" class="app-logo" />
+      <div class="logo-text">
+        <h1 class="app-title">FRIDA</h1>
+        <p class="app-subtitle">Female Replacement Intelligent Digital Assistant</p>
+      </div>
+    </div>
   </header>
 
-  <main>
-    <details id="providerPanel" class="provider-panel">
-      <summary>📡 Provider Settings</summary>
-      <div class="provider-form">
-        <label>
-          Base URL
-          <input type="text" id="providerBaseUrl" placeholder="https://..." />
-        </label>
-        <label>
-          API Key
-          <input type="password" id="providerApiKey" placeholder="sk-..." />
-          <span id="providerKeyHint" class="provider-hint"></span>
-        </label>
-        <button id="providerTest" class="provider-test">Tes Koneksi</button>
-        <div id="providerStatus" class="provider-status"></div>
-        <label id="providerModelLabel" style="display:none">
-          Model
-          <select id="providerModel">
-            <option value="">-- Pilih model --</option>
-          </select>
-        </label>
-        <button id="providerSave" class="provider-save" disabled>Simpan Pengaturan</button>
-      </div>
-    </details>
+  <nav class="app-nav">
+    <button class="nav-tab active" data-tab="chat">💬 Chat</button>
+    <button class="nav-tab" data-tab="sources">📚 Referensi</button>
+    <button class="nav-tab" data-tab="settings">⚙ Pengaturan</button>
+  </nav>
 
-    <details id="srcPanel" class="src-panel">
-      <summary>📚 Sumber riset <span id="srcCount" class="src-count"></span></summary>
+  <main class="app-main">
+    <!-- CHAT TAB -->
+    <div id="tab-chat" class="tab-content active">
+      <div id="log" class="chat-log"></div>
+      <div id="status" class="status"></div>
+      <button id="undo" class="undo" style="display:none">↩️ Undo perubahan terakhir</button>
+      <div id="audit" class="audit"></div>
+      <div class="composer">
+        <textarea id="instruction" rows="2" placeholder="Tulis perintah untuk FRIDA…"></textarea>
+        <div class="composer-actions">
+          <label class="check" title="Tinjau dampak sebelum menerapkan">
+            <input type="checkbox" id="previewToggle" checked /> Tinjau
+          </label>
+          <button id="send" class="primary send-btn">Kirim</button>
+        </div>
+        <p class="hint">Tips: blok dulu bagian yang dimaksud bila perintah menyebut "ini" / "di sini".</p>
+      </div>
+    </div>
+
+    <!-- REFERENCES TAB -->
+    <div id="tab-sources" class="tab-content">
+      <div class="section-header">
+        <h2 class="section-title">📚 Referensi</h2>
+        <button id="srcReindex" class="src-reindex">🔄 Indeks Ulang</button>
+      </div>
       <div id="srcDrop" class="src-drop">
-        Klik atau seret file ke sini — PDF, DOCX, TXT (maks 25MB)
+        Klik atau seret file ke sini<br/><small>PDF, DOCX, TXT (maks 25MB)</small>
         <input type="file" id="srcFile" accept=".pdf,.docx,.txt" multiple hidden />
       </div>
       <div id="srcStatus" class="src-status"></div>
+      <div class="src-list-header">
+        <h3>Daftar Dokumen <span id="srcCount" class="src-count"></span></h3>
+      </div>
       <div id="srcList" class="src-list"></div>
-      <div class="src-foot">
-        <button id="srcReindex" class="src-reindex">Indeks ulang sumber</button>
-        <span id="srcEmbed" class="src-embed"></span>
-      </div>
-    </details>
-
-    <div id="log" class="log">
-      <div class="msg assistant">
-        Halo, saya FRIDA. Contoh perintah:<br />
-        • Buat semua heading biru ukuran 18.<br />
-        • Ganti semua "Company A" jadi "Company B".<br />
-        • Tebalkan teks yang sedang saya blok.
-      </div>
+      <div id="srcEmbed" class="src-embed"></div>
     </div>
 
-    <div id="status" class="status"></div>
-    <button id="undo" class="undo" style="display:none">↩️ Undo perubahan terakhir</button>
-    <div id="audit" class="audit"></div>
+    <!-- SETTINGS TAB -->
+    <div id="tab-settings" class="tab-content">
+      <div class="section-header">
+        <h2 class="section-title">⚙ Pengaturan</h2>
+      </div>
 
-    <div class="composer">
-      <textarea id="instruction" rows="3"
-        placeholder="Tulis perintah untuk FRIDA… (Ctrl+Enter untuk kirim)"></textarea>
-      <label class="check"><input type="checkbox" id="previewToggle" checked />
-        Tinjau dampak sebelum menerapkan</label>
-      <button id="send" class="primary">Kirim</button>
-      <p class="hint">Tips: blok dulu bagian yang dimaksud bila perintah menyebut "ini" / "di sini".</p>
+      <!-- GUIDELINE CONFIG -->
+      <div class="settings-card">
+        <h3 class="settings-card-title">📖 Panduan Penulisan</h3>
+        <div class="provider-form">
+          <label>
+            Profil Fakultas / Institusi
+            <select id="guidelineSelect">
+              <option value="">-- Tidak ada / Generik --</option>
+            </select>
+          </label>
+          <div id="activeGuidelineDesc" class="provider-hint" style="margin-top:4px;"></div>
+        </div>
+      </div>
+
+      <!-- AI PROVIDER -->
+      <div class="settings-card">
+        <h3 class="settings-card-title">🤖 AI Provider</h3>
+        <div class="provider-form">
+          <label>
+            Base URL
+            <input type="text" id="providerBaseUrl" placeholder="https://..." />
+          </label>
+          <label>
+            API Key
+            <input type="password" id="providerApiKey" placeholder="sk-..." />
+            <span id="providerKeyHint" class="provider-hint"></span>
+          </label>
+          <button id="providerTest" class="provider-test">🔌 Tes Koneksi</button>
+          <div id="providerStatus" class="provider-status"></div>
+          <label id="providerModelLabel" style="display:none">
+            Model
+            <select id="providerModel">
+              <option value="">-- Pilih model --</option>
+            </select>
+          </label>
+          <button id="providerSave" class="provider-save" disabled>💾 Simpan Pengaturan</button>
+        </div>
+      </div>
     </div>
   </main>
 
-  <!-- Registry tool + lapisan keselamatan (sumber kebenaran bersama dgn server). -->
-  <!-- Muat SEBELUM taskpane.js. -->
+  <!-- Registry tool + lapisan keselamatan -->
   <script src="tools/schemas.js"></script>
   <script src="tools/handlers.js"></script>
   <script src="tools/safety.js"></script>
   <script src="taskpane.js"></script>
   <script src="sources-ui.js"></script>
   <script src="provider-ui.js"></script>
+  <script src="guideline-ui.js"></script>
 </body>
 </html>

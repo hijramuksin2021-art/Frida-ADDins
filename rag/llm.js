@@ -3,33 +3,16 @@
 // lewat forced tool). Membaca konfigurasi dari env saat dipanggil (.env sudah dimuat
 // server saat start).
 
-// Muat .env sekali bila env belum terisi (mis. modul dipakai di luar server.js).
-let _envLoaded = false;
-function ensureEnv() {
-  if (_envLoaded || process.env.AERO_API_KEY) { _envLoaded = true; return; }
-  try {
-    const fs = require("fs"), path = require("path");
-    const p = path.join(__dirname, "..", ".env");
-    if (fs.existsSync(p)) {
-      for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
-        const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
-        if (!m || line.trim().startsWith("#")) continue;
-        let v = m[2].trim();
-        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-        if (!(m[1] in process.env)) process.env[m[1]] = v;
-      }
-    }
-  } catch (_) {}
-  _envLoaded = true;
-}
-
+// Konfigurasi provider dari sumber bersama (providerConfig) — sama dgn server.js,
+// jadi ganti provider/model lewat UI langsung berlaku untuk generasi RAG juga.
+const providerConfig = require("./providerConfig");
 function cfg() {
-  ensureEnv();
+  const a = providerConfig.get();
   return {
-    apiKey: process.env.AERO_API_KEY,
-    baseUrl: (process.env.AERO_BASE_URL || "https://capi.aerolink.lat/").replace(/\/?$/, "/"),
-    model: process.env.FRIDA_MODEL || "claude-opus-4-8",
-    maxTokens: Number(process.env.FRIDA_MAX_TOKENS || 8000),
+    apiKey: a.apiKey,
+    baseUrl: String(a.baseUrl || "").replace(/\/?$/, "/"),
+    model: a.model,
+    maxTokens: a.maxTokens || 8000,
   };
 }
 
@@ -118,12 +101,13 @@ function normalizeOpenAI(data) {
 // callModel({system, messages, tools, tool_choice, maxTokens}) -> data (Anthropic response)
 async function callModelOnce(opts) {
   const c = cfg();
-  if (!c.apiKey) throw new Error("AERO_API_KEY belum di-set");
+  if (!c.apiKey) throw new Error("API key provider belum di-set (atur di panel Provider).");
   const resp = await fetch(c.baseUrl + "v1/messages", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-api-key": c.apiKey,
+      "authorization": "Bearer " + c.apiKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({

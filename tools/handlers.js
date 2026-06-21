@@ -379,12 +379,24 @@
     });
 
     const loc = replaceSel ? Word.InsertLocation.replace : Word.InsertLocation.end;
-    const table = insertPoint.insertTable(rows, cols, loc, grid);
+
+    // Insert table kosong dulu, lalu isi sel-selnya
+    const table = insertPoint.insertTable(rows, cols, loc);
+
+    // Isi nilai ke setiap cell
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = table.getCell(r, c);
+        cell.clear();
+        cell.insertText(grid[r][c], Word.InsertLocation.replace);
+      }
+    }
+
     if (args.style) {
       try { table.style = args.style; } catch (e) { /* style tak ada: abaikan */ }
     }
     if (args.headerRow !== false && rows > 0) {
-      table.getRow(0).font.bold = true;
+      try { table.rows.getFirst().font.bold = true; } catch (e) {}
     }
     await context.sync();
     return { rows, cols };
@@ -551,10 +563,14 @@
     }
 
     // 3) hapus baris — dari indeks BESAR ke kecil agar tak menggeser
-    const dels = (args.deleteRowIndices || []).slice().sort((a, b) => b - a);
-    dels.forEach((ri) => {
-      try { table.getRow(ri).delete(); rowsDeleted++; } catch (err) { /* lewati */ }
-    });
+    if (args.deleteRowIndices && args.deleteRowIndices.length) {
+      table.load("rows");
+      await context.sync();
+      const dels = args.deleteRowIndices.slice().sort((a, b) => b - a);
+      dels.forEach((ri) => {
+        try { table.rows.items[ri].delete(); rowsDeleted++; } catch (err) { /* lewati */ }
+      });
+    }
 
     await context.sync();
     return { cellsEdited, rowsAdded, rowsDeleted };
@@ -575,7 +591,7 @@
     // 1) style & header bold via API (ini bekerja). Lakukan SEBELUM baca OOXML
     //    agar ikut terbawa saat border ditulis ulang lewat OOXML.
     if (args.style) { try { table.style = args.style; } catch (e) {} }
-    if (args.headerBold) { try { table.getRow(0).font.bold = true; } catch (e) {} }
+    if (args.headerBold) { try { table.rows.getFirst().font.bold = true; } catch (e) {} }
     await context.sync();
 
     let bordersApplied = null;
@@ -600,25 +616,82 @@
              style: args.style || null, method: bordersApplied ? "ooxml" : "style" };
   }
 
-  // ---- Tool: insert_citation (client; string sitasi dari SERVER) ----
+  // ---- Helper: insertRichItalicRange (R5) — sisipkan teks dgn *italic* ke range ----
+  // Mengembalikan range yang mencakup seluruh teks yang disisipkan (utk content control).
+  function insertRichItalicRange(anchorRange, text) {
+    const parts = String(text || "").split("*");
+    const insertedRanges = [];
+    let currentAnchor = anchorRange;
+
+    parts.forEach((seg, i) => {
+      if (!seg) return;
+      const r = currentAnchor.insertText(seg, Word.InsertLocation.after);
+      if (i % 2 === 1) { try { r.font.italic = true; } catch (e) {} }
+      insertedRanges.push(r);
+      currentAnchor = r;
+    });
+
+    // Kembalikan range yang mencakup semua teks yang disisipkan
+    if (insertedRanges.length === 0) return anchorRange;
+    if (insertedRanges.length === 1) return insertedRanges[0];
+    // Expand dari range pertama ke range terakhir
+    return insertedRanges[0].expandTo(insertedRanges[insertedRanges.length - 1]);
+  }
+
+  // ---- Tool: insert_citation (client; string sitasi dari SERVER) ---- (R5: updated untuk footnote)
   async function insert_citation(context, args) {
     const resp = await fetch("/api/sources/cite", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source_id: args.source_id, style: args.style || "APA7",
-                             page: args.page, narrative: !!args.narrative }),
+                             page: args.page, narrative: !!args.narrative, mode: args.mode || "inText" }),
     });
     const data = await resp.json();
     if (!resp.ok || !data.text) return { error: data.error || "sitasi tak tersedia (metadata sumber kosong?)" };
+
     const sel = context.document.getSelection();
-    const r = sel.getRange(Word.RangeLocation.end).insertText(data.text, Word.InsertLocation.end);
-    // tandai dgn content control utk update massal nanti (R5)
-    try { const cc = r.insertContentControl(); cc.tag = "frida-cite:" + args.source_id + ":" + (args.style || "APA7"); cc.title = "FRIDA Citation"; }
-    catch (e) { /* host lama: lewati */ }
+    const r = sel.getRange(Word.RangeLocation.end);
+    let citationRange;
+    const mode = args.mode || "inText";
+    const style = args.style || "APA7";
+
+    if (mode === "footnote") {
+      // Coba insert sebagai Word footnote (API 1.5+)
+      const canFootnote = typeof r.insertFootnote === "function";
+      if (canFootnote) {
+        try {
+          const note = r.insertFootnote(data.text);
+          citationRange = note.body.getRange();
+          // Wrap seluruh footnote body dalam content control
+          const cc = citationRange.insertContentControl();
+          cc.tag = "frida-cite:" + args.source_id + ";style=" + style + ";mode=footnote;narrative=" + (!!args.narrative) + ";page=" + (args.page || "");
+          cc.title = "FRIDA Citation (Footnote)";
+        } catch (e) {
+          // Fallback: insert inline dgn bracket
+          citationRange = r.insertText("[Footnote: " + data.text + "]", Word.InsertLocation.end);
+          const cc = citationRange.insertContentControl();
+          cc.tag = "frida-cite:" + args.source_id + ";style=" + style + ";mode=inText;narrative=" + (!!args.narrative) + ";page=" + (args.page || "");
+          cc.title = "FRIDA Citation";
+        }
+      } else {
+        // Host tidak support footnote API: insert inline dengan bracket
+        citationRange = r.insertText("[Footnote: " + data.text + "]", Word.InsertLocation.end);
+        const cc = citationRange.insertContentControl();
+        cc.tag = "frida-cite:" + args.source_id + ";style=" + style + ";mode=inText;narrative=" + (!!args.narrative) + ";page=" + (args.page || "");
+        cc.title = "FRIDA Citation";
+      }
+    } else {
+      // In-text citation (default)
+      citationRange = r.insertText(data.text, Word.InsertLocation.end);
+      const cc = citationRange.insertContentControl();
+      cc.tag = "frida-cite:" + args.source_id + ";style=" + style + ";mode=inText;narrative=" + (!!args.narrative) + ";page=" + (args.page || "");
+      cc.title = "FRIDA Citation";
+    }
+
     await context.sync();
-    return { ok: true, citation: data.text };
+    return { ok: true, citation: data.text, mode: mode };
   }
 
-  // ---- Tool: insert_bibliography (client; entri dari SERVER) ----
+  // ---- Tool: insert_bibliography (client; entri dari SERVER) ---- (R5: wrapped in ContentControl)
   async function insert_bibliography(context, args) {
     const resp = await fetch("/api/sources/bibliography", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -628,15 +701,31 @@
     if (!resp.ok) return { error: data.error || "gagal membuat daftar pustaka" };
     const entries = data.entries || [];
     if (!entries.length) return { error: "Tak ada sumber dengan metadata lengkap untuk daftar pustaka. Lengkapi metadata dulu." };
+
     const body = context.document.body;
-    const h = body.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.end);
+    const style = args.style || "APA7";
+    const sourceIds = (args.source_ids && args.source_ids.length) ? args.source_ids.join(",") : "";
+
+    // Buat placeholder paragraf, wrap dalam CC, lalu isi di dalamnya
+    const placeholder = body.insertParagraph("", Word.InsertLocation.end);
+    const cc = placeholder.insertContentControl();
+    cc.tag = "frida-bibliography:" + sourceIds;
+    cc.title = "FRIDA Bibliography";
+
+    // Isi content control
+    const h = cc.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.end);
     try { h.styleBuiltIn = Word.BuiltInStyleName.heading1; } catch (e) {}
+
     entries.forEach((e) => {
-      const p = body.insertParagraph("", Word.InsertLocation.end);
+      const p = cc.insertParagraph("", Word.InsertLocation.end);
       insertRichItalic(p, e.text); // render *...* sebagai miring
     });
+
+    // Hapus placeholder yang awalnya kosong
+    try { placeholder.delete(); } catch (e) {}
+
     await context.sync();
-    return { ok: true, count: entries.length, style: args.style || "APA7" };
+    return { ok: true, count: entries.length, style: style };
   }
 
   // Sisipkan teks ber-penanda *miring* ke paragraf (selang-seling normal/italic).
@@ -749,6 +838,104 @@
       '</pkg:xmlData></pkg:part></pkg:package>';
   }
 
+  // ---- Tool: update_all_citations (R5) — perbarui semua sitasi ke gaya baru ----
+  async function update_all_citations(context, args) {
+    const newStyle = args.style || "APA7";
+    const ccs = context.document.contentControls;
+    ccs.load("items/tag,items/title");
+    await context.sync();
+
+    let updatedCitations = 0;
+    let updatedBibliographies = 0;
+    let errors = [];
+
+    // Proses setiap content control
+    for (const cc of ccs.items) {
+      const tag = cc.tag || "";
+
+      // Handle frida-cite:* tags
+      if (tag.startsWith("frida-cite:")) {
+        try {
+          // Parse tag format: frida-cite:source_id;style=X;mode=Y;narrative=Z;page=W
+          const parts = tag.split(";");
+          const sourceId = parts[0].replace("frida-cite:", "").trim();
+          let mode = "inText", page = "", narrative = false;
+
+          for (let i = 1; i < parts.length; i++) {
+            const [key, val] = parts[i].split("=");
+            if (key.trim() === "mode") mode = val.trim();
+            if (key.trim() === "page") page = val.trim();
+            if (key.trim() === "narrative") narrative = val.trim() === "true";
+          }
+
+          // Fetch citation dengan gaya baru
+          const resp = await fetch("/api/sources/cite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source_id: sourceId, style: newStyle, mode: mode, page: page, narrative: narrative })
+          });
+          const data = await resp.json();
+
+          if (resp.ok && data.text) {
+            // Update isi content control
+            cc.clear();
+            const p = cc.insertParagraph(data.text, Word.InsertLocation.start);
+            insertRichItalic(p, data.text); // render *...* sebagai miring
+
+            // Update tag dengan gaya baru
+            cc.tag = "frida-cite:" + sourceId + ";style=" + newStyle + ";mode=" + mode + ";narrative=" + narrative + ";page=" + page;
+            updatedCitations++;
+          } else {
+            errors.push("Gagal update sitasi " + sourceId + ": " + (data.error || "tidak ada text"));
+          }
+        } catch (e) {
+          errors.push("Error update frida-cite: " + (e.message || e));
+        }
+      }
+
+      // Handle frida-bibliography:* tags
+      if (tag.startsWith("frida-bibliography:")) {
+        try {
+          const sourceIdsStr = tag.replace("frida-bibliography:", "").trim();
+          const sourceIds = sourceIdsStr ? sourceIdsStr.split(",") : [];
+
+          // Fetch bibliography dengan gaya baru
+          const resp = await fetch("/api/sources/bibliography", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source_ids: sourceIds, style: newStyle })
+          });
+          const data = await resp.json();
+
+          if (resp.ok && data.entries && data.entries.length) {
+            // Clear dan rebuild bibliography inside CC
+            cc.clear();
+
+            const h = cc.insertParagraph("Daftar Pustaka", Word.InsertLocation.start);
+            try { h.styleBuiltIn = Word.BuiltInStyleName.heading1; } catch (e) {}
+
+            for (const entry of data.entries) {
+              const p = cc.insertParagraph("", Word.InsertLocation.end);
+              insertRichItalic(p, entry.text);
+            }
+
+            // Tag tidak perlu diubah (sudah berisi source_ids)
+            updatedBibliographies++;
+          } else {
+            errors.push("Gagal update bibliography: " + (data.error || "tidak ada entries"));
+          }
+        } catch (e) {
+          errors.push("Error update frida-bibliography: " + (e.message || e));
+        }
+      }
+    }
+
+    await context.sync();
+    const msg = "Diperbarui: " + updatedCitations + " sitasi, " + updatedBibliographies + " daftar pustaka ke " + newStyle +
+                (errors.length ? ". Errors: " + errors.join("; ") : "");
+    return { ok: true, updatedCitations, updatedBibliographies, style: newStyle, message: msg, errors: errors };
+  }
+
   const HANDLERS = {
     get_document_outline,
     format_text,
@@ -772,6 +959,7 @@
     format_business_proposal,
     insert_citation,
     insert_bibliography,
+    update_all_citations,
   };
 
   // ---- Pemetaan nama tool yang andal ----

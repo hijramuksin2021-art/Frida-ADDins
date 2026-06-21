@@ -539,7 +539,7 @@
     name: "insert_citation",
     runtime: "client",
     description:
-      "Sisipkan SITASI in-text dari sumber terunggah di posisi kursor (gaya APA7/MLA/Chicago/Harvard/IEEE). " +
+      "Sisipkan SITASI dari sumber terunggah di posisi kursor (in-text atau footnote, gaya APA7/MLA/Chicago/Harvard/IEEE). " +
       "String sitasi dibuat server dari metadata terverifikasi — Anda HANYA memberi source_id (BUKAN menulis " +
       "sendiri nama/tahun). Dapatkan source_id dari search_uploaded_sources atau generate_paragraph_from_source.",
     input_schema: {
@@ -548,7 +548,8 @@
         source_id: { type: "string", description: "ID sumber (dari hasil pencarian/generate)." },
         style: { type: "string", enum: ["APA7", "MLA", "Chicago", "Harvard", "IEEE"], default: "APA7" },
         page: { type: "string", description: "Nomor halaman opsional, mis. '12'." },
-        narrative: { type: "boolean", description: "true = gaya naratif (Penulis (tahun)) bukan dalam kurung." },
+        narrative: { type: "boolean", description: "true = gaya naratif (Penulis (tahun)) bukan dalam kurung (untuk in-text)." },
+        mode: { type: "string", enum: ["inText", "footnote"], default: "inText", description: "inText = sitasi di dalam teks (default); footnote = sitasi di catatan kaki (Word footnote)." },
       },
       required: ["source_id", "style"],
     },
@@ -568,6 +569,22 @@
         source_ids: { type: "array", items: { type: "string" }, description: "Batasi ke sumber tertentu (kosong = semua)." },
         title: { type: "string", default: "Daftar Pustaka", description: "Judul daftar pustaka." },
       },
+    },
+  };
+
+  const update_all_citations = {
+    name: "update_all_citations",
+    runtime: "client",
+    description:
+      "Perbarui SEMUA sitasi dan daftar pustaka di dokumen ke gaya (style) yang baru. " +
+      "Gunakan untuk perintah seperti 'ubah semua sitasi jadi MLA' atau 'ganti gaya ke Chicago'. " +
+      "Tool ini akan mencari semua sitasi yang telah disisipkan dan memperbaruinya otomatis tanpa restart.",
+    input_schema: {
+      type: "object",
+      properties: {
+        style: { type: "string", enum: ["APA7", "MLA", "Chicago", "Harvard", "IEEE"], description: "Gaya sitasi baru yang diinginkan (wajib)." },
+      },
+      required: ["style"],
     },
   };
 
@@ -639,6 +656,7 @@
     create_table, format_list, manage_header_footer, set_page_numbers, insert_image,
     insert_toc, manage_comments, set_track_changes, edit_table, format_table,
     insert_cover_page, format_business_proposal, insert_citation, insert_bibliography,
+    update_all_citations,  // R5
     search_uploaded_sources, generate_paragraph_from_source,
     resolve_source, summarize_source, compare_sources,  // R4
   ];

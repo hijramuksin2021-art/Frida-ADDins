@@ -1,0 +1,299 @@
+{
+  "id": "unkhair-pertanian-2021",
+  "nama": "Pedoman Penulisan Usulan Penelitian, Skripsi, dan Praktek Kerja Lapangan - Fakultas Pertanian Universitas Khairun (2021)",
+  "fakultas": "Fakultas Pertanian",
+  "universitas": "Universitas Khairun",
+  "tahun_terbit": 2021,
+  "jenis_dokumen_didukung": ["usulan_penelitian", "skripsi", "laporan_pkl"],
+
+  "format_umum": {
+    "kertas": {
+      "isi_dokumen": "Kuarto, 80 gram",
+      "cover_usulan_penelitian": "Karton/jilid tebal, warna hijau tua",
+      "cover_skripsi": "Hard-cover, warna hijau tua",
+      "cover_laporan_pkl": "Buffalo tebal, warna hijau tua",
+      "sampul_dalam_usulan": "HVS putih 70g",
+      "sampul_dalam_skripsi": "HVS putih 80g",
+      "sampul_dalam_pkl": "Kuarto putih A4 70g"
+    },
+    "margin": {
+      "kiri": "4 cm",
+      "atas": "3 cm",
+      "kanan": "3 cm",
+      "bawah": "3 cm"
+    },
+    "font": {
+      "jenis": "Times New Roman",
+      "ukuran_isi_dokumen": 12,
+      "ukuran_judul_tabel_gambar": 11,
+      "ukuran_judul_sampul": 14,
+      "ukuran_nama_mahasiswa_sampul": 14,
+      "ukuran_nama_mahasiswa_skripsi": 12
+    },
+    "spasi": {
+      "umum_dalam_teks": 2,
+      "judul_bab_ke_subbab": 3.5,
+      "subbab_ke_kalimat_baru": 2,
+      "kalimat_terakhir_subbab_ke_subbab_lain": 2.5,
+      "kalimat_terakhir_ke_judul_tabel_gambar": 2.5,
+      "setelah_tabel_gambar_ke_kalimat": 2.5,
+      "dalam_tabel": 1,
+      "sampul_dan_pengesahan": 1,
+      "daftar_isi_tabel_gambar_lampiran": 1.5
+    },
+    "heading_style": {
+      "judul_bab": "Huruf kapital, bold, center, heading 1, nomor bab pakai angka romawi besar (BAB I, BAB II, dst)",
+      "judul_sub_bab": "Huruf kecil (awal kata kapital), bold, heading 2, nomor format X.X (misal: 1.1 Pendahuluan)",
+      "isi": "Style normal"
+    },
+    "nomor_halaman": {
+      "posisi": "Kanan bawah",
+      "bagian_awal": "Angka romawi kecil (i, ii, iii, dst) - mulai dari sampul dalam s.d. daftar lampiran",
+      "bagian_utama_dan_akhir": "Angka biasa (1, 2, 3, dst)",
+      "lampiran": "Melanjutkan nomor halaman sebelumnya (angka biasa)"
+    },
+    "aturan_teks_khusus": {
+      "istilah_asing_dan_lokal": "Ditulis miring (italic)",
+      "angka_kurang_dari_10_dalam_kalimat": "Ditulis dengan angka diikuti huruf, contoh: '9 (sembilan) jenis'"
+    }
+  },
+
+  "aturan_tabel_dan_gambar": {
+    "ukuran_font": 11,
+    "posisi": "Center (tengah halaman)",
+    "judul_tabel": "Diletakkan DI ATAS tabel, format: 'Tabel [no bab].[no urut]. [Judul]' (contoh: Tabel 5.1. Hasil Analisa Kimia Roti Tawar)",
+    "judul_gambar": "Diletakkan DI BAWAH gambar, format: 'Gambar [no bab].[no urut] [Judul]' (contoh: Gambar 5.1 Uji Hedonik Aroma Roti Tawar)",
+    "aturan_pemisahan": "Tabel TIDAK BOLEH terpisah/terpotong ke halaman berikutnya, harus dalam satu halaman utuh",
+    "penomoran": "Menggunakan nomor bab + nomor urut (caption otomatis disarankan)",
+    "keterangan_tabel": "Boleh ditambahkan keterangan/sumber di bawah tabel dengan superscript (contoh: a) Standar Nasional Indonesia (1995); b) Malomo et al. (2011))"
+  },
+
+  "sitasi": {
+    "gaya": "APA 7th Edition (American Psychological Association)",
+    "software_rujukan": "Mendeley (disarankan untuk manajemen referensi)",
+    "in_text_rules": {
+      "penulis_tunggal": {
+        "format": "(NamaBelakang, Tahun) atau NamaBelakang (Tahun)",
+        "contoh_awal_kalimat": "Holt (1997) menyatakan bahwa...",
+        "contoh_akhir_kalimat": "...masuk dalam peredaran limfa (Crock, 2012)."
+      },
+      "dua_penulis": {
+        "format": "(NamaBelakang1 & NamaBelakang2, Tahun)",
+        "contoh": "(Akoh & Min, 2008)"
+      },
+      "tiga_atau_lebih_penulis": {
+        "format": "(NamaBelakangPertama et al., Tahun)",
+        "contoh": "(Naomi et al., 2013)"
+      },
+      "nama_yang_digunakan": "Hanya nama belakang/akhir penulis (tanpa gelar)",
+      "penulis_sama_tahun_sama": "Tambahkan huruf a, b, c setelah tahun, contoh: (Bond, 1991a) dan (Bond, 1991b)"
+    },
+    "format_daftar_pustaka": {
+      "urutan": "Alfabetis berdasarkan nama belakang penulis",
+      "spasi_dalam_satu_sumber": 1,
+      "spasi_antar_sumber_usulan_penelitian": 1.5,
+      "spasi_antar_sumber_skripsi": 2,
+      "indentasi": "Baris pertama rata kiri, baris selanjutnya menjorok ke dalam 1 tab (hanging indent)",
+      "format_nama_penulis": "Nama belakang, diikuti inisial nama depan/tengah disingkat, tanpa gelar akademik"
+    },
+    "contoh_per_jenis_sumber": {
+      "buku_penulis_tunggal": {
+        "in_text": "(Holt, 1997) atau Holt (1997)",
+        "daftar_pustaka": "Holt, D.H. (1997). Management principles and practices. Sydney: Prentice-Hall."
+      },
+      "buku_2_penulis": {
+        "in_text": "(Akoh & Min, 2008)",
+        "daftar_pustaka": "Akoh, C.C., & Min, D.B. (2008). Food Lipids: Chemistry, Nutrition, and Biotechnology. CRC Press: New York."
+      },
+      "buku_lebih_dari_3_penulis": {
+        "in_text": "(Bond et al., 1996)",
+        "daftar_pustaka": "Bond, W.R., Smith, J.T., Brown, K.L. & George, M. (1996). Management of small firms. Sydney: McGraw-Hill."
+      },
+      "buku_tanpa_nama_penulis": {
+        "in_text": "(A history of Greece, 1994)",
+        "daftar_pustaka": "A history of Greece. (1994). Sydney: Irwin."
+      },
+      "buku_editor": {
+        "in_text": "(Jones, 1998)",
+        "daftar_pustaka": "Jones, M.D. (ed.) (1998). Management in Australia. London: Academic Press."
+      },
+      "buku_2_atau_lebih_editor": {
+        "in_text": "(Bullinger & Warnecke, 1985)",
+        "daftar_pustaka": "Bullinger, H.J. & Warnecke, H.J. (eds.). (1985). Toward the factory of the future. Berlin: Springer-Verlag."
+      },
+      "buku_organisasi_sebagai_penulis": {
+        "in_text": "(BPS, 2018)",
+        "daftar_pustaka": "Badan Pusat Statistik. (2018). Provinsi Maluku Utara dalam Angka. BPS Provinsi Maluku Utara. URL: https://malut.bps.go.id/publication/2018."
+      },
+      "bab_atau_artikel_dalam_buku_edisi": {
+        "in_text": "(Milkman, 1998: 25)",
+        "daftar_pustaka": "Milkman, R. (1998). The new American workplace: high road or low road? In P. Thompson & C. Warhurst (eds.). Workplaces of the future. London: Macmillan Press, pp. 22-34."
+      },
+      "ebook": {
+        "in_text": "(FAO, 2005)",
+        "daftar_pustaka": "Food and Agricultural Organization of the United Nations. (2020). State of Knowledge of Soil Biodiversity. Rome. Diakses dari https://doi.org/10.4060/cb1929en, pada tanggal 25 Maret 2020."
+      },
+      "penulis_sama_tahun_sama": {
+        "in_text": "(Bond, 1991a) dan (Bond, 1991b)",
+        "daftar_pustaka": "Bond, G. (1991a). Business ethics. Sydney: McGraw-Hill.\nBond, G. (1991b). Corporate governance. London: Irwin."
+      },
+      "artikel_jurnal_cetak": {
+        "in_text": "(Botta et al., 2010)",
+        "daftar_pustaka": "Botta, G.F., Tolon-Becerra, A., Lastra-Bravo, X., & Tourn, M. (2010). Tillage and traffic effects (planters and tractors) on soil compaction and soybean (Glycine max L.) yields in Argentinean pampas. Soil and Tillage Research, 110(1): 167-174."
+      },
+      "artikel_jurnal_online": {
+        "in_text": "(Segon & Booth, 2011)",
+        "daftar_pustaka": "Segon, M. & Booth, C. (2011). Bribery: what do Australian managers know and what do they do? Journal of Business Systems, Governance and Ethics, 6(3): 15-29. Available from: http://www.jbsge.vu.edu.au/issues/vol06no3/Segon_&_Booth.pdf. [20 October 2014]."
+      },
+      "skripsi_tesis_disertasi": {
+        "in_text": "(Arisyi, 2015)",
+        "daftar_pustaka": "Arisyi, M.N. (2015). Fortifikasi Mi Instan dengan Mikroemulsi Fraksi Tidak Tersabunkan yang Mengandung Senyawa Bioaktif Multi Komponen dari Distilat Asam Lemak Minyak Sawit. Skripsi. Jurusan Teknologi Hasil Pertanian, Fakultas Teknologi Pertanian, Universitas Brawijaya."
+      },
+      "web_dokumen": {
+        "in_text": "(National Heart, Lung and Blood Institute, 2005)",
+        "daftar_pustaka": "National Heart, Lung and Blood Institute. (2005). High blood cholesterol: what you need to know. http://www.nhlbi.nih.gov/health/resources/heart/heart-cholesterol-hbc-what-html. Tanggal akses 10 April 2016."
+      },
+      "paten": {
+        "in_text": "(Schaffer & Schaffer, 2004)",
+        "daftar_pustaka": "Schaffer, J., & Schaffer, R. (2004). Edible straw. Patent US200502060304A1."
+      },
+      "prosiding": {
+        "in_text": "(Duckworth et al., 2019)",
+        "daftar_pustaka": "Duckworth, A.L., Quirk, A., Gallop, R., Hoyle, R.H., Kelly, D.R., & Matthews, M.D. (2019). Cognitive and noncognitive predictors of success. Proceedings of the National Academy of Science, USA, 116(47), 23499-23504. https://doi.org/10.1073/pnas.1910510116."
+      }
+    },
+    "ketentuan_sumber_pustaka": {
+      "umur_sumber": "Diutamakan terbitan 10 tahun terakhir, kecuali untuk teori yang belum terbantahkan oleh teori baru",
+      "sumber_tidak_diperbolehkan": "Materi kuliah, laporan praktikum, dan tugas perkuliahan TIDAK BOLEH dijadikan sumber pustaka",
+      "sumber_diperbolehkan": "Buku, laporan penelitian (skripsi/tesis/disertasi), buletin/majalah ilmiah, jurnal ilmiah, dan sumber ilmiah kredibel lainnya"
+    }
+  },
+
+  "struktur_dokumen": {
+    "usulan_penelitian": {
+      "bagian_awal": [
+        "Sampul Luar (hijau tua, karton tebal)",
+        "Sampul Dalam (HVS putih 70g)",
+        "Halaman Persetujuan/Pengesahan (ditandatangani Pembimbing I & II, untuk pengesahan ditambah Ketua Prodi)",
+        "Daftar Isi",
+        "Daftar Tabel",
+        "Daftar Gambar",
+        "Daftar Lampiran"
+      ],
+      "bagian_utama": {
+        "bab_1": {
+          "judul": "PENDAHULUAN",
+          "sub_bab": ["1.1 Latar Belakang", "1.2 Rumusan Masalah", "1.3 Tujuan Penelitian (1.3.1 Tujuan Umum, 1.3.2 Tujuan Khusus)", "1.4 Manfaat Penelitian"]
+        },
+        "bab_2": {
+          "judul": "TINJAUAN PUSTAKA",
+          "sub_bab": ["Uraian Dasar Teori (sesuai topik penelitian)", "Hipotesis Penelitian (opsional, tidak wajib untuk penelitian inovasi/penciptaan alat)"]
+        },
+        "bab_3": {
+          "judul": "METODE PENELITIAN",
+          "catatan": "Format berbeda tergantung jenis penelitian: Eksperimental atau Non-Eksperimental",
+          "sub_bab_eksperimental": ["3.1 Tempat dan Waktu Penelitian", "3.2 Bahan dan Alat", "3.3 Rancangan Penelitian", "3.4 Variabel Penelitian", "3.5 Prosedur Penelitian", "3.6 Metode Analisis Data"],
+          "sub_bab_non_eksperimental": ["3.1 Tempat dan Waktu Penelitian", "3.2 Desain Penelitian", "3.3 Populasi dan Sampel Penelitian", "3.4 Variabel dan Definisi Operasional Variabel (DOV)", "3.5 Jenis dan Sumber Data", "3.6 Instrumen Penelitian", "3.7 Prosedur Pengumpulan Data", "3.8 Metode Analisis Data"]
+        }
+      },
+      "bagian_akhir": ["Daftar Pustaka (spasi 1 dalam sumber, 1.5 antar sumber)", "Lampiran (termasuk Kartu/Logbook Konsultasi)"]
+    },
+
+    "skripsi": {
+      "bagian_awal": [
+        "Sampul Luar (hard-cover hijau tua)",
+        "Sampul Dalam (HVS putih 80g)",
+        "Halaman Persetujuan/Pengesahan (Pembimbing I & II untuk persetujuan; +Tim Penguji & Dekan untuk pengesahan)",
+        "Halaman Pernyataan Keaslian (bermaterai 10.000)",
+        "Motto dan Persembahan (format bebas)",
+        "Riwayat Hidup (dengan foto 4x6 berwarna, pojok kiri atas)",
+        "Ucapan Terima Kasih",
+        "Ringkasan (Bahasa Indonesia: latar belakang, tujuan, metode, hasil, kesimpulan, saran, kata kunci)",
+        "Summary (terjemahan Ringkasan dalam Bahasa Inggris)",
+        "Daftar Isi",
+        "Daftar Tabel",
+        "Daftar Gambar",
+        "Daftar Lampiran"
+      ],
+      "bagian_utama": {
+        "bab_1": { "judul": "PENDAHULUAN", "catatan": "Sama dengan format usulan penelitian Bab I" },
+        "bab_2": { "judul": "TINJAUAN PUSTAKA", "catatan": "Sama dengan format usulan penelitian Bab II" },
+        "bab_3": { "judul": "METODE PENELITIAN", "catatan": "Sama dengan format usulan penelitian Bab III" },
+        "bab_4": {
+          "judul": "HASIL DAN PEMBAHASAN",
+          "catatan": "Bagian inti skripsi. Dua model penyajian: (1) Hasil dan Pembahasan terpisah dalam sub-bab berbeda, atau (2) Hasil langsung diikuti pembahasan dalam satu sub-bab",
+          "wajib_memuat": "Hubungan hasil dengan hipotesis (jika ada), kesulitan penelitian dan cara mengatasi, larangan menyalin kalimat dari sumber pustaka (anti-plagiasi)"
+        },
+        "bab_5": {
+          "judul": "PENUTUP",
+          "sub_bab": ["5.1 Kesimpulan (jawaban dari tujuan penelitian, BUKAN ringkasan hasil)", "5.2 Saran"]
+        }
+      },
+      "bagian_akhir": ["Daftar Pustaka (spasi 1 dalam sumber, 2 antar sumber)", "Lampiran (logbook konsultasi, kuesioner, foto kegiatan, data hasil penelitian, data analisis statistik, protokol lab, surat izin, bukti bebas plagiasi, dll)"]
+    },
+
+    "laporan_pkl": {
+      "bagian_awal": [
+        "Sampul Luar (buffalo tebal hijau tua)",
+        "Sampul Dalam (kuarto putih A4 70g)",
+        "Surat Permohonan PKL/Magang (ditandatangani Ketua Prodi)",
+        "Surat Persetujuan Instansi/Perusahaan/Lembaga/Desa",
+        "Surat Tugas",
+        "Surat Keterangan Telah Melaksanakan PKL/Magang",
+        "Halaman Pengesahan Komisi Pembimbing (institusi)",
+        "Halaman Pengesahan Pembimbing Lapangan (tempat PKL)",
+        "Kata Pengantar (maksimal 2 halaman)",
+        "Daftar Isi",
+        "Daftar Tabel",
+        "Daftar Gambar",
+        "Daftar Lampiran"
+      ],
+      "bagian_utama": {
+        "bab_1": {
+          "judul": "PENDAHULUAN",
+          "sub_bab": [
+            "1.1 Latar Belakang",
+            "1.2 Tujuan PKL/Magang (1.1.1 Tujuan Umum, 1.1.2 Tujuan Khusus)",
+            "1.3 Manfaat PKL/Magang (1.3.1 Bagi Lokasi PKL, 1.3.2 Bagi Institusi, 1.3.3 Bagi Penulis)"
+          ]
+        },
+        "bab_2": {
+          "judul": "PELAKSANAAN",
+          "sub_bab": ["2.1 Tempat dan Waktu Pelaksanaan PKL", "2.2 Metode Pelaksanaan PKL"]
+        },
+        "bab_3": {
+          "judul": "GAMBARAN UMUM LOKASI PKL/MAGANG",
+          "sub_bab": ["3.1 Deskripsi Lokasi", "3.2 Sejarah Singkat Perusahaan/Instansi/Lembaga/Desa", "3.3 Struktur Organisasi dan Tata Kelola"]
+        },
+        "bab_4": {
+          "judul": "HASIL DAN PEMBAHASAN",
+          "sub_bab": [
+            "4.1 Uraian Kegiatan PKL/Magang",
+            "4.2 Kaitan Kegiatan PKL/Magang dengan Mata Kuliah",
+            "4.3 Tantangan dari Kegiatan PKL/Magang yang Dihadapi",
+            "4.4 Kegiatan dalam PKL/Magang yang Dapat Mengubah Mindset",
+            "4.5 Kompetensi yang Harus Disiapkan Mahasiswa dalam Menghadapi Dunia Kerja"
+          ]
+        },
+        "bab_5": {
+          "judul": "PENUTUP",
+          "sub_bab": ["5.1 Kesimpulan (jawaban dari tujuan khusus)", "5.2 Saran (untuk institusi dan lokasi PKL)"]
+        }
+      },
+      "bagian_akhir": ["Lampiran (logbook/jurnal kegiatan diparaf supervisor lapangan, jurnal bimbingan dosen, foto kegiatan, kuesioner, dll)"]
+    }
+  },
+
+  "aturan_plagiarisme": {
+    "batas_maksimal": "25%",
+    "pengecekan_oleh": "Unit Penjaminan Mutu (UPM) Fakultas Pertanian",
+    "konsekuensi_melebihi_batas": "Wajib revisi naskah dan cek ulang hingga di bawah 25%, tidak diperkenankan ujian skripsi sebelum memenuhi syarat",
+    "definisi": "Mengambil ide/argumen/data/hasil penelitian orang lain tanpa mencantumkan identitas sumber secara rinci dan jelas"
+  },
+
+  "catatan_implementasi": {
+    "sumber_dokumen": "Diekstrak dari PDF 'PEDOMAN_PENULISAN_PROPOSAL_SKRIPSI_PKL_2021_fix.pdf' (76 halaman, termasuk lampiran contoh format)",
+    "kelengkapan": "Mencakup seluruh BAB I-V isi pedoman utama. Lampiran 1-3 (contoh-contoh format sampul, lembar pengesahan, daftar isi per jenis dokumen) tidak dimasukkan verbatim ke JSON ini karena bersifat template visual, namun strukturnya sudah tercermin di field 'struktur_dokumen' dan 'format_umum' di atas.",
+    "penggunaan_oleh_ai": "Saat tool generate_paragraph_from_source, insert_citation, insert_bibliography, atau tool penulisan lain dipanggil dengan guideline_id='unkhair-pertanian-2021' aktif, sisipkan field relevan dari JSON ini (terutama 'sitasi' dan 'struktur_dokumen' sesuai jenis dokumen yang sedang dikerjakan user) ke dalam instruksi/system prompt AI."
+  }
+}

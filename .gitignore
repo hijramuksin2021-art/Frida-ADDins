@@ -18,3 +18,5 @@ data/
 
 # Sertifikat dev (jika tergenerate di proyek)
 *.pem
+provider.local.json
+guideline.local.json

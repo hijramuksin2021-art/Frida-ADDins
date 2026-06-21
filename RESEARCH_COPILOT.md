@@ -225,8 +225,9 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 | **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ✅ SELESAI |
 | **R3.5** | Provider Settings UI: Input Base URL + API Key + Tes Koneksi → dropdown model otomatis terisi → Simpan | ✅ SELESAI |
 | **R4** | resolve_source/alias, summarize_source, compare_sources | ✅ SELESAI |
-| **R5** | Gaya MLA/Chicago/Harvard/IEEE, footnote, update-all via content control | ⬜ |
-| **R6** | Faithfulness/NLI verify, quote-check, kalibrasi ambang | ⬜ |
+| **R5** | Footnote citations (mode footnote) + update-all citations via content control | ✅ SELESAI |
+| **R6** | Faithfulness/NLI verify, quote-check, kalibrasi ambang | ✅ SELESAI |
+| **R7** | Guideline Profile: Panduan penulisan per Fakultas/Prodi, auto-style enforcement, rule injection di LLM prompt | ✅ SELESAI |
 
 **Dependensi npm**: `pdf-parse` (v2, PDFParse.getText), `mammoth` (terpasang R0); R1: `better-sqlite3`+`sqlite-vec`, `@xenova/transformers`; R3: `citeproc-js`+file CSL.
 
@@ -409,6 +410,130 @@ Panduan baru di prompt:
 > compare_sources (LLM grounded via forced tool) fungsional di server loop. summarize/compare
 > membutuhkan API key aktif untuk LLM call; resolve_source dapat diuji offline (unit-test 176 cek
 > semua lulus). R5 (update-all via Content Control, gaya footnote) menyusul.
+
+## R5 — Catatan implementasi (Footnote & Bulk Update)
+Dua fitur utama ditambahkan pada fase ini: dukungan sitasi catatan kaki (Word Footnotes) dan kemampuan untuk memperbarui semua sitasi di dokumen secara massal (bulk update).
+
+### Modul & Handler yang Diperbarui
+- **`server.js`** (endpoint `/api/sources/cite`) — Mendukung parameter `mode="footnote"`. Jika mode ini diaktifkan, server mengembalikan format `entryFor` (format entri bibliografi lengkap) ditambah nomor halaman (misal: `, p. 12.`), menggantikan format in-text biasa.
+- **`tools/schemas.js`** — 
+  - `insert_citation`: Menambahkan parameter `mode` (`inText` atau `footnote`).
+  - `update_all_citations` (baru): Mendaftarkan schema untuk memperbarui gaya semua sitasi.
+  - Memperbarui array `SCHEMAS` agar mencakup tool baru ini.
+- **`tools/handlers.js`** —
+  - `insert_citation`: Mendukung `mode="footnote"` dengan menggunakan API `range.insertFootnote(text)`. Jika API ini tidak didukung oleh host Word, akan otomatis menggunakan fallback inline `[Footnote: text]`.
+  - Tag Content Control untuk sitasi ditingkatkan agar menyimpan metadata lengkap: `frida-cite:${source_id};style=${style};mode=${mode};narrative=${narrative};page=${page}`.
+  - `insert_bibliography`: Diubah agar membungkus daftar pustaka dalam `ContentControl` bertag `frida-bibliography:[source_ids]` agar dapat dideteksi saat update massal.
+  - `update_all_citations` (baru): Melakukan enumerasi semua `contentControls` di dokumen, mem-parsing parameternya, memanggil API backend untuk mendapatkan teks dengan gaya baru, lalu mengganti isinya secara dinamis.
+  - `insertRichItalicRange` (baru): Helper untuk menyisipkan teks berformat `*italic*` ke dalam `Word.Range` dan mengembalikan range lengkap yang telah diekspansi untuk dibungkus `ContentControl`.
+
+### Alur Kerja Bulk Update
+1. Saat user memerintahkan "ubah semua sitasi jadi MLA" atau "gunakan Chicago", LLM memanggil tool `update_all_citations(style)`.
+2. Handler di klien memindai seluruh dokumen mencari content controls.
+3. Untuk setiap sitasi (`frida-cite`), script mengekstrak source ID, halaman, narasi, dan mode yang disimpan di tag.
+4. Script melakukan query ke server dengan style baru, lalu mengganti teks di dalam content control.
+5. Untuk daftar pustaka (`frida-bibliography`), script mengekstrak source IDs yang tersimpan di tag, melakukan query ulang daftar pustaka dengan style baru, lalu me-rebuild isinya.
+6. Tag content control diperbarui dengan nama style baru agar dapat di-update kembali di masa mendatang.
+
+> **STATUS R5: SELESAI.** Dukungan footnote fungsional dan bulk update sitasi & daftar pustaka telah diimplementasikan dengan aman menggunakan Content Control tagging.
+
+## R6 — Catatan implementasi (Faithfulness/NLI + Quote-Check + Threshold Calibration)
+Tiga lapisan verifikasi tambahan untuk meningkatkan ketahanan terhadap halusinasi: verifikasi kutipan (quote-check), verifikasi kesetiaan semantik (faithfulness/NLI), dan sistem analitik untuk kalibrasi ambang batas retrieval.
+
+### Modul Baru
+- **`rag/quotecheck.js`** — Ekstraksi dan verifikasi kutipan literal dalam paragraf.
+  - `extractQuotes(text)`: Mengekstrak teks dalam tanda petik ("..." atau '...') dengan panjang 5-200 karakter.
+  - `quoteInChunks(quote, chunks, threshold=0.85)`: Verifikasi kutipan ada di chunks sumber menggunakan exact match atau fuzzy match (Levenshtein distance).
+  - `verifyQuotes(paragraph, chunks)`: Verifikasi semua kutipan, kembalikan `{quotes, verified, flagged}`.
+- **`rag/faithfulness.js`** — Verifikasi kesetiaan semantik menggunakan LLM.
+  - `verifyFaithfulness(paragraph, chunks)`: Menggunakan LLM dengan prompt skeptis untuk mendeteksi kontradiksi antara paragraf yang dihasilkan dan chunks sumber.
+  - Mengklasifikasikan setiap kalimat klaim sebagai ENTAILED, NEUTRAL, atau CONTRADICTION.
+  - Hanya flag kontradiksi MAJOR (minor diabaikan untuk mengurangi false positive).
+  - Fallback: jika LLM gagal, izinkan paragraf (lebih baik daripada reject tanpa verifikasi).
+- **`rag/analytics.js`** — Manajemen log dan analitik in-memory.
+  - `logGeneration(event)`: Catat setiap upaya generasi paragraf (accepted/rejected, maxScore, reason).
+  - `getStats()`: Kembalikan statistik agregat (total, accepted, rejected, avgScore, rejectionReasons, scoreDistribution, recentLogs).
+  - Batasi 500 log terakhir untuk efisiensi memori.
+
+### Modifikasi Modul Existing
+- **`rag/generate.js`** — Integritas verifikasi R6.
+  - Import `quotecheck` dan `faithfulness` modules.
+  - `GATE_SCORE` sekarang configurable via `process.env.GATE_SCORE_MIN` (default tetap 0.3).
+  - Setelah generasi: verifikasi sitasi → verifikasi kutipan → verifikasi faithfulness.
+  - Jika kutipan tidak terverifikasi: ganti dengan `[kutipan dihapus]`.
+  - Jika ada kontradiksi MAJOR: reject paragraf dengan alasan detail.
+  - Log setiap upaya generasi ke `analytics.js` dengan metadata (maxScore, reason, verifiedCitations, verifiedQuotes).
+- **`server.js`** — Endpoint analitik baru.
+  - `GET /api/sources/analytics/threshold`: Kembalikan statistik retrieval dan verifikasi dari modul `rag/analytics`.
+
+### Alur Verifikasi R6
+```
+Generasi paragraf (R2)
+  ↓
+Verifikasi sitasi (R2) → buang sitasi tak terverifikasi
+  ↓
+Verifikasi kutipan (R6) → buang kutipan tak terverifikasi, ganti dengan "[kutipan dihapus]"
+  ↓
+Verifikasi faithfulness (R6) → jika ada kontradiksi MAJOR, reject paragraf
+  ↓
+Log ke analytics (R6) → catat hasil verifikasi dan maxScore untuk kalibrasi
+  ↓
+Return paragraf final (jika lulus semua verifikasi)
+```
+
+### Konfigurasi Threshold
+- **Environment variable**: `GATE_SCORE_MIN` (default: 0.3)
+  - Contoh: `GATE_SCORE_MIN=0.35 npm start` untuk threshold lebih ketat
+- **Endpoint analitik**: `GET /api/sources/analytics/threshold`
+  - Kembalikan distribusi skor tertinggi per request (band: 0.0-0.2, 0.2-0.3, 0.3-0.4, 0.4-0.5, 0.5+)
+  - Statistik rejection reasons (insufficient_evidence, llm_error, empty_generation, faithfulness_contradiction)
+  - Recent logs (15 terakhir) untuk debugging
+
+### Trade-offs & Keputusan Desain
+1. **Quote-check fuzzy matching** (threshold 0.85):
+   - Kelebihan: Toleransi terhadap minor differences (punctuation, whitespace)
+   - Kekurangan: Bisa false positive jika threshold terlalu rendah
+   - Keputusan: 0.85 sebagai balance antara akurasi dan toleransi
+2. **Faithfulness via LLM** (bukan NLI model):
+   - Kelebihan: Reuses existing infrastructure, client-agnostic, mudah interpretasi
+   - Kekurangan: Extra LLM call per paragraf (biaya + latensi)
+   - Keputusan: LLM-based lebih praktis daripada load NLI model client-side
+3. **In-memory analytics** (bukan database):
+   - Kelebihan: Simple, fast, no extra dependency
+   - Kekurangan: Data hilang saat server restart
+   - Keputusan: Acceptable untuk development; bisa migrate ke SQLite/pgvector nanti
+
+### Verifikasi Manual
+1. Upload sumber dengan fakta jelas (misal: "Einstein lahir 1879")
+2. Generate paragraf dengan kontradiksi sengaja ("Einstein lahir 1900") → harus ditolak
+3. Generate paragraf dengan kutipan akurat → harus lulus verifikasi quote
+4. Generate paragraf dengan kutipan salah → harus diganti dengan `[kutipan dihapus]`
+5. Cek `GET /api/sources/analytics/threshold` → lihat statistik rejection dan distribusi skor
+
+> **STATUS R6: SELESAI.** Semua 8 lapisan anti-halusinasi sekarang fungsional: (1) sitasi by-code, (2) DOI→Crossref, (3) retrieval gate, (4) atribusi wajib, (5) verifikasi kutipan, (6) **faithfulness/NLI (R6)**, (7) traceability via content control, (8) source_id protection. Sistem siap untuk deployment.
+
+## R7 — Catatan implementasi (Guideline Profile: Panduan Fakultas)
+Fitur untuk mendukung gaya penulisan spesifik dari fakultas atau program studi tertentu, bukan sekadar format akademik generik. Profil panduan disimpan dalam bentuk JSON terstruktur, yang kemudian diinjeksi ke LLM untuk generasi teks dan digunakan secara deterministik untuk engine sitasi.
+
+### Komponen Utama
+- **`rag/guidelines/*.json`** — Repositori profil panduan. File pertama `unkhair-pertanian-2021.json` menyimpan konfigurasi kertas, spasi, struktur bab, sitasi, dan aturan plagiarisme secara mendetail.
+- **`rag/guidelineConfig.js`** — Pengelola status dan cache profil yang sedang aktif. Di-persist ke `guideline.local.json`.
+- **`server.js` (Endpoint & Override)**
+  - Menambahkan endpoint `GET /api/guidelines` (daftar semua panduan) dan `GET /api/guidelines/:id`.
+  - Override otomatis di `/api/sources/cite` dan `/api/sources/bibliography`. Jika profil aktif mewajibkan "APA7", endpoint otomatis memaksakan style APA7 terlepas dari argumen client.
+- **`rag/generate.js` (Rule Injection)**
+  - System prompt `GROUNDED_SYSTEM` dirakit secara dinamis (via `getGroundedSystem()`).
+  - Menyuntikkan _Aturan Khusus_ (misal: "Istilah asing dicetak miring", "Angka <10 menggunakan huruf", "Hindari plagiarisme >25%").
+- **UI Task Pane (`guideline-ui.js` & `taskpane.html`)**
+  - Dropdown "Panduan Penulisan" di tab Pengaturan untuk menampilkan daftar panduan yang tersedia.
+  - Memilih panduan akan memberi badge konfirmasi dan menyimpan pilihan (mirip Provider Settings).
+
+### Cara Kerja dan Verifikasi
+1. User memilih profil "Fakultas Pertanian Unkhair" di Task Pane. Add-in mengingat pilihan di `guideline.local.json`.
+2. Saat user meminta LLM "Buatkan paragraf...", prompt sistem menyertakan aturan spesifik Unkhair (seperti cara menulis angka dan istilah asing).
+3. Saat user meminta "Tambahkan sitasi", server mengecek `guidelineConfig`. Jika panduan menyebut APA 7, maka `csl.js` dieksekusi dengan mode `APA7`.
+
+> **STATUS R7: SELESAI.** Profil panduan terinjeksi mulus ke pipeline generasi (`rag/generate.js`) dan formater sitasi (`server.js`). Siap digunakan untuk menyesuaikan hasil AI dengan pedoman penulisan fakultas nyata.
 
 ## 17. Scalability
 1. Store pluggable (`VectorStore` interface): sqlite-vec → pgvector/Qdrant.

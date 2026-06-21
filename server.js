@@ -28,6 +28,9 @@ const sourceStore = require("./rag/store");
 const embeddings = require("./rag/embeddings");
 const vectors = require("./rag/vectors");
 const cite = require("./rag/cite");
+const providerConfig = require("./rag/providerConfig");
+const guidelineConfig = require("./rag/guidelineConfig");
+guidelineConfig.init();
 
 // ---- konfigurasi: env DULU, lalu config.json sbg fallback (nilai non-rahasia) ----
 // API key TIDAK boleh disimpan di config.json yang ter-commit. Taruh di .env / env OS.
@@ -61,9 +64,8 @@ const cfg = {
 };
 
 if (!cfg.apiKey) {
-  console.error("API key belum di-set. Buat file .env berisi:  AERO_API_KEY=...");
-  console.error("(lihat .env.example). Jangan menaruh key di config.json yang ter-commit.");
-  process.exit(1);
+  console.warn("Catatan: API key belum di-set di .env. Anda bisa mengaturnya lewat panel");
+  console.warn("'Provider' di add-in (Base URL + API Key + Tes koneksi), tanpa restart.");
 }
 if (fileCfg.apiKey) {
   console.warn("PERINGATAN: config.json masih memuat apiKey. Pindahkan ke .env lalu hapus dari config.json.");
@@ -248,17 +250,19 @@ function normalizeOpenAI(data) {
 
 // satu kali panggilan ke provider
 async function callOnce(userContent) {
-  const url = cfg.baseUrl.replace(/\/?$/, "/") + "v1/messages";
+  const pc = providerConfig.get();
+  const url = pc.baseUrl.replace(/\/?$/, "/") + "v1/messages";
   const resp = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": cfg.apiKey,
+      "x-api-key": pc.apiKey,
+      "authorization": "Bearer " + pc.apiKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: cfg.model,
-      max_tokens: cfg.maxTokens || 8000,
+      model: pc.model,
+      max_tokens: pc.maxTokens || 8000,
       system: SYSTEM_PROMPT,
       tools: [EDIT_TOOL],
       tool_choice: { type: "tool", name: "apply_changes" },
@@ -329,17 +333,19 @@ const AGENT_SYSTEM_PROMPT = [
 ].join("\n");
 
 async function callAgentOnce(messages) {
-  const url = cfg.baseUrl.replace(/\/?$/, "/") + "v1/messages";
+  const pc = providerConfig.get();
+  const url = pc.baseUrl.replace(/\/?$/, "/") + "v1/messages";
   const resp = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": cfg.apiKey,
+      "x-api-key": pc.apiKey,
+      "authorization": "Bearer " + pc.apiKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: cfg.model,
-      max_tokens: cfg.maxTokens || 8000,
+      model: pc.model,
+      max_tokens: pc.maxTokens || 8000,
       system: AGENT_SYSTEM_PROMPT,
       tools: API_TOOLS,
       tool_choice: { type: "auto" },
@@ -445,6 +451,137 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// ===================== Provider config (atur dari add-in) =====================
+// Ambil daftar model dari endpoint OpenAI-compatible {baseUrl}/v1/models (atau /models).
+async function listModels(baseUrl, apiKey) {
+  const base = String(baseUrl || "").replace(/\/?$/, "/");
+  const urls = [base + "v1/models", base + "models"];
+  let lastErr = "";
+  for (const u of urls) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const resp = await fetch(u, {
+        headers: { "authorization": "Bearer " + apiKey, "x-api-key": apiKey },
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      const raw = await resp.text();
+      if (!resp.ok) { lastErr = "HTTP " + resp.status + ": " + raw.slice(0, 120); continue; }
+      const data = JSON.parse(raw);
+      const list = (data.data || data.models || []).map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
+      if (list.length) return { ok: true, models: list };
+      lastErr = "daftar model kosong";
+    } catch (e) { lastErr = String(e.message || e); }
+  }
+  return { ok: false, error: lastErr || "tak bisa mengambil daftar model" };
+}
+
+function handleProvider(req, res) {
+  const url = req.url.split("?")[0];
+  if (req.method === "GET" && url === "/api/provider") {
+    return sendJson(res, 200, providerConfig.status());
+  }
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", async () => {
+    try {
+      const b = JSON.parse(body || "{}");
+      if (req.method === "POST" && url === "/api/provider/test") {
+        // pakai key yang dikirim, atau key aktif bila kosong (mis. hanya ganti baseUrl)
+        const key = b.apiKey || providerConfig.get().apiKey;
+        const r = await listModels(b.baseUrl || providerConfig.get().baseUrl, key);
+        return sendJson(res, r.ok ? 200 : 502, r);
+      }
+      if (req.method === "POST" && url === "/api/provider") {
+        const st = providerConfig.set({ baseUrl: b.baseUrl, apiKey: b.apiKey, model: b.model });
+        return sendJson(res, 200, { ok: true, status: st });
+      }
+      return sendJson(res, 404, { error: "rute provider tidak dikenal" });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err.message || err) });
+    }
+  });
+}
+// =============================================================================
+
+// ===================== Guideline Profile (R7) =====================
+function handleGuideline(req, res) {
+  const url = req.url.split("?")[0];
+
+  // GET /api/guideline -> status guideline aktif
+  if (req.method === "GET" && url === "/api/guideline") {
+    return sendJson(res, 200, guidelineConfig.status());
+  }
+
+  // GET /api/guidelines -> daftar semua guideline yang tersedia
+  if (req.method === "GET" && url === "/api/guidelines") {
+    const dir = path.join(__dirname, "rag", "guidelines");
+    try {
+      const files = fs.readdirSync(dir).filter(f => f.endsWith(".json"));
+      const list = files.map(f => {
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+          return {
+            id: content.id,
+            nama: content.nama,
+            fakultas: content.fakultas,
+            universitas: content.universitas,
+            tahun_terbit: content.tahun_terbit,
+            jenis_dokumen_didukung: content.jenis_dokumen_didukung,
+          };
+        } catch (_) { return null; }
+      }).filter(Boolean);
+      return sendJson(res, 200, { guidelines: list });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err.message || err) });
+    }
+  }
+
+  // GET /api/guidelines/:id -> detail lengkap satu guideline
+  if (req.method === "GET" && /^\/api\/guidelines\/[\w-]+$/.test(url)) {
+    const id = url.split("/").pop();
+    const dir = path.join(__dirname, "rag", "guidelines");
+    try {
+      const p = path.join(dir, id + ".json");
+      if (!fs.existsSync(p)) return sendJson(res, 404, { error: "Guideline tidak ditemukan" });
+      const content = JSON.parse(fs.readFileSync(p, "utf8"));
+      return sendJson(res, 200, content);
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err.message || err) });
+    }
+  }
+
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => {
+    try {
+      const b = JSON.parse(body || "{}");
+      if (req.method === "POST" && url === "/api/guideline") {
+        const st = guidelineConfig.setActiveId(b.id);
+        return sendJson(res, 200, { ok: true, status: st });
+      }
+      return sendJson(res, 404, { error: "rute guideline tidak dikenal" });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err.message || err) });
+    }
+  });
+}
+// =============================================================================
+
+function getEnforcedStyle(requestedStyle) {
+  const st = guidelineConfig.status();
+  if (st && st.gayaSitasi) {
+    const s = st.gayaSitasi.toLowerCase();
+    if (s.includes("apa")) return "APA7";
+    if (s.includes("mla")) return "MLA";
+    if (s.includes("chicago")) return "Chicago";
+    if (s.includes("harvard")) return "Harvard";
+    if (s.includes("ieee")) return "IEEE";
+  }
+  return requestedStyle;
+}
+
 async function handleSources(req, res) {
   const url = req.url.split("?")[0];
   try {
@@ -462,6 +599,11 @@ async function handleSources(req, res) {
     // GET /api/sources/embed-status -> status provider embeddings (tanpa key)
     if (req.method === "GET" && url === "/api/sources/embed-status") {
       return sendJson(res, 200, embeddings.status());
+    }
+    // GET /api/sources/analytics/threshold -> analitik ambang batas & log verifikasi (R6)
+    if (req.method === "GET" && url === "/api/sources/analytics/threshold") {
+      const analytics = require("./rag/analytics");
+      return sendJson(res, 200, analytics.getStats());
     }
     // POST /api/sources/reindex -> embed dokumen yg belum ber-vektor
     if (req.method === "POST" && url === "/api/sources/reindex") {
@@ -484,19 +626,32 @@ async function handleSources(req, res) {
         hits: hits.map((h) => ({ ...h, title: titles[h.document_id] || null })),
       });
     }
-    // POST /api/sources/cite  { source_id, style, page, narrative }
+    // POST /api/sources/cite  { source_id, style, page, narrative, mode }
     if (req.method === "POST" && url === "/api/sources/cite") {
       const b = JSON.parse((await readBody(req)) || "{}");
-      const text = cite.inTextFor(b.source_id, b.style || "APA7",
-        { page: b.page, narrative: b.narrative });
+      const enforcedStyle = getEnforcedStyle(b.style || "APA7");
+      let text;
+      if (b.mode === "footnote") {
+        // Untuk footnote, gunakan format bibliography entry penuh
+        text = cite.entryFor(b.source_id, enforcedStyle);
+        // Tambahkan page number jika ada
+        if (text && b.page) {
+          text = text.replace(/\.$/, "") + ", p. " + b.page + ".";
+        }
+      } else {
+        // In-text citation (default)
+        text = cite.inTextFor(b.source_id, enforcedStyle,
+          { page: b.page, narrative: b.narrative });
+      }
       if (text == null) return sendJson(res, 404, { error: "metadata sumber kosong; lengkapi dulu metadata." });
-      return sendJson(res, 200, { text });
+      return sendJson(res, 200, { text, appliedStyle: enforcedStyle });
     }
     // POST /api/sources/bibliography  { source_ids, style }
     if (req.method === "POST" && url === "/api/sources/bibliography") {
       const b = JSON.parse((await readBody(req)) || "{}");
-      const entries = cite.bibliography(b.source_ids, b.style || "APA7");
-      return sendJson(res, 200, { entries });
+      const enforcedStyle = getEnforcedStyle(b.style || "APA7");
+      const entries = cite.bibliography(b.source_ids, enforcedStyle);
+      return sendJson(res, 200, { entries, appliedStyle: enforcedStyle });
     }
     // PATCH /api/sources/:id/metadata  { csl }
     if (req.method === "PATCH" && /^\/api\/sources\/[\w-]+\/metadata$/.test(url)) {
@@ -561,6 +716,8 @@ async function handleEdit(req, res) {
 
   https
     .createServer(httpsOptions, (req, res) => {
+      if (req.url.startsWith("/api/provider")) return handleProvider(req, res);
+      if (req.url.startsWith("/api/guideline")) return handleGuideline(req, res);
       if (req.url.startsWith("/api/sources")) return handleSources(req, res);
       if (req.method === "POST" && req.url.startsWith("/api/agent")) return handleAgent(req, res);
       if (req.method === "POST" && req.url.startsWith("/api/edit")) return handleEdit(req, res);
@@ -568,9 +725,10 @@ async function handleEdit(req, res) {
       res.writeHead(405); res.end("Method not allowed");
     })
     .listen(PORT, () => {
+      const pc0 = providerConfig.status();
       console.log("FRIDA berjalan di  https://localhost:" + PORT + "/taskpane.html");
-      console.log("Provider :", cfg.baseUrl);
-      console.log("Model    :", cfg.model);
+      console.log("Provider :", pc0.baseUrl, pc0.hasKey ? "(key ✓)" : "(key belum di-set)");
+      console.log("Model    :", pc0.model);
       console.log("Tools    :", TOOL_SCHEMAS.length, "terdaftar (" + TOOL_SCHEMAS.map(t => t.name).join(", ") + ")");
       console.log("Biarkan jendela ini terbuka selama memakai add-in di Word.");
     });
