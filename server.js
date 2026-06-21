@@ -30,6 +30,7 @@ const vectors = require("./rag/vectors");
 const cite = require("./rag/cite");
 const providerConfig = require("./rag/providerConfig");
 const guidelineConfig = require("./rag/guidelineConfig");
+const { detectGuidelineFromMessage } = require("./rag/guideline-fuzzy");
 guidelineConfig.init();
 
 // ---- konfigurasi: env DULU, lalu config.json sbg fallback (nilai non-rahasia) ----
@@ -303,7 +304,7 @@ async function callClaude(userContent) {
 // KLIEN karena eksekusi tool wajib di dalam Word.run (Office.js). Server tetap
 // stateless & tidak pernah menyentuh dokumen.
 
-const AGENT_SYSTEM_PROMPT = [
+const AGENT_SYSTEM_PROMPT_BASE = [
   "Nama Anda FRIDA, agen penyunting yang MENGENDALIKAN Microsoft Word lewat tool.",
   "Anda tidak menyunting teks secara langsung; Anda memanggil tool yang disediakan.",
   "ALUR WAJIB:",
@@ -332,6 +333,37 @@ const AGENT_SYSTEM_PROMPT = [
   "Jika instruksi ambigu atau berisiko (mis. mengganti di seluruh dokumen), tetap usulkan tool call yang paling masuk akal; konfirmasi keamanan ditangani oleh aplikasi klien.",
 ].join("\n");
 
+function getAgentSystemPrompt() {
+  let prompt = AGENT_SYSTEM_PROMPT_BASE;
+  const gl = guidelineConfig.getActiveGuideline();
+  if (gl) {
+    prompt += "\n\nPANDUAN PENULISAN AKTIF: " + gl.nama + "\n";
+    prompt += "SAAT MENYUNTING/MEMPERBAIKI TEKS, TERAPKAN ATURAN BERIKUT:\n";
+    if (gl.format_umum) {
+      if (gl.format_umum.font) {
+        prompt += "- Font: " + gl.format_umum.font.jenis + ", ukuran " + gl.format_umum.font.ukuran_isi_dokumen + "pt\n";
+      }
+      if (gl.format_umum.margin) {
+        prompt += "- Margin: kiri " + gl.format_umum.margin.kiri + ", atas " + gl.format_umum.margin.atas + ", kanan " + gl.format_umum.margin.kanan + ", bawah " + gl.format_umum.margin.bawah + "\n";
+      }
+      if (gl.format_umum.spasi) {
+        prompt += "- Spasi umum dalam teks: " + gl.format_umum.spasi.umum_dalam_teks + "\n";
+      }
+      if (gl.format_umum.aturan_teks_khusus) {
+        prompt += "- Istilah asing: " + gl.format_umum.aturan_teks_khusus.istilah_asing_dan_lokal + "\n";
+        prompt += "- Angka < 10: " + gl.format_umum.aturan_teks_khusus.angka_kurang_dari_10_dalam_kalimat + "\n";
+      }
+    }
+    if (gl.aturan_plagiarisme) {
+      prompt += "- Plagiarisme: batas maksimal " + gl.aturan_plagiarisme.batas_maksimal + ". " + gl.aturan_plagiarisme.definisi + "\n";
+    }
+    if (gl.sitasi && gl.sitasi.gaya) {
+      prompt += "- Gaya Sitasi: " + gl.sitasi.gaya + "\n";
+    }
+  }
+  return prompt;
+}
+
 async function callAgentOnce(messages) {
   const pc = providerConfig.get();
   const url = pc.baseUrl.replace(/\/?$/, "/") + "v1/messages";
@@ -346,7 +378,7 @@ async function callAgentOnce(messages) {
     body: JSON.stringify({
       model: pc.model,
       max_tokens: pc.maxTokens || 8000,
-      system: AGENT_SYSTEM_PROMPT,
+      system: getAgentSystemPrompt(),
       tools: API_TOOLS,
       tool_choice: { type: "auto" },
       messages,
@@ -429,6 +461,24 @@ function handleAgent(req, res) {
         res.end(JSON.stringify({ error: "messages[] wajib diisi" }));
         return;
       }
+
+      // FITUR R7: Deteksi guideline dari pesan user pertama
+      // Jika user menyebut nama guideline (mis. "Fakultas Pertanian Unkhair"),
+      // auto-aktivasi guideline tersebut sebelum agent loop dimulai.
+      if (messages.length > 0 && messages[0].role === "user") {
+        const userMsg = messages[0].content;
+        if (typeof userMsg === "string") {
+          const detectedGl = detectGuidelineFromMessage(userMsg);
+          if (detectedGl && detectedGl.id) {
+            const currentGl = guidelineConfig.getActiveId();
+            // Hanya auto-activate jika berbeda atau belum ada yang aktif
+            if (detectedGl.id !== currentGl) {
+              guidelineConfig.setActiveId(detectedGl.id);
+            }
+          }
+        }
+      }
+
       const result = await runAgentServerLoop(messages);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
