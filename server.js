@@ -171,6 +171,81 @@ const SYSTEM_PROMPT = [
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// --- Parser SSE + OpenAI → Anthropic ---
+// Router lokal mengembalikan SSE stream (Content-Type: text/event-stream) untuk semua request,
+// termasuk tool calls. Parser ini merakit stream menjadi format Anthropic standar.
+// Jika response JSON biasa (aerolink asli), normalizeOpenAI menanganinya.
+function parseBodyToAnthropic(contentType, raw) {
+  const isStream = (contentType || "").includes("event-stream");
+
+  if (!isStream) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { throw new Error("Respons bukan JSON valid: " + raw.slice(0, 200)); }
+    return normalizeOpenAI(data);
+  }
+
+  // SSE: rakit dari event-data lines (format Anthropic SSE)
+  const lines = raw.split(/\r?\n/);
+  const blocks = {};
+  let stopReason = "end_turn";
+  let msgId = "";
+
+  for (const line of lines) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    let ev;
+    try { ev = JSON.parse(payload); } catch (_) { continue; }
+
+    if (ev.type === "message_start" && ev.message) {
+      msgId = ev.message.id || "";
+    } else if (ev.type === "content_block_start") {
+      const cb = ev.content_block || {};
+      blocks[ev.index] = { type: cb.type, id: cb.id, name: cb.name, partialJson: "", text: "" };
+    } else if (ev.type === "content_block_delta") {
+      const b = blocks[ev.index];
+      if (!b) continue;
+      const d = ev.delta || {};
+      if (d.type === "input_json_delta") b.partialJson += (d.partial_json || "");
+      if (d.type === "text_delta") b.text += (d.text || "");
+    } else if (ev.type === "message_delta") {
+      if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
+    }
+  }
+
+  const content = Object.keys(blocks).sort((a, b) => Number(a) - Number(b)).map(idx => {
+    const b = blocks[idx];
+    if (b.type === "tool_use") {
+      let input = {};
+      try { input = JSON.parse(b.partialJson || "{}"); } catch (_) {}
+      return { type: "tool_use", id: b.id, name: b.name, input };
+    }
+    return { type: "text", text: b.text || "" };
+  });
+
+  return { id: msgId, stop_reason: stopReason, content };
+}
+
+function normalizeOpenAI(data) {
+  if (data.content) return data;
+  const choice = (data.choices || [])[0];
+  if (!choice) return data;
+  const msg = choice.message || {};
+  const finish = choice.finish_reason || "stop";
+  const content = [];
+  if (msg.content) content.push({ type: "text", text: msg.content });
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls) {
+      const fn = tc.function || {};
+      let input = {};
+      try { input = JSON.parse(fn.arguments || "{}"); } catch (_) {}
+      content.push({ type: "tool_use", id: tc.id || ("tc_" + Math.random().toString(36).slice(2)), name: fn.name || "", input });
+    }
+  }
+  const reasonMap = { tool_calls: "tool_use", stop: "end_turn", length: "max_tokens" };
+  return { id: data.id, model: data.model, stop_reason: reasonMap[finish] || finish, content };
+}
+
 // satu kali panggilan ke provider
 async function callOnce(userContent) {
   const url = cfg.baseUrl.replace(/\/?$/, "/") + "v1/messages";
@@ -192,7 +267,7 @@ async function callOnce(userContent) {
   });
   const raw = await resp.text();
   if (!resp.ok) throw new Error("Provider " + resp.status + ": " + raw.slice(0, 500));
-  const data = JSON.parse(raw);
+  const data = parseBodyToAnthropic(resp.headers.get("content-type"), raw);
   // Catatan: beberapa provider/proxy mengganti nama tool di respons,
   // jadi jangan cocokkan nama persis — ambil blok tool_use pertama saja.
   const toolUse = (data.content || []).find(b => b.type === "tool_use" && b.input);
@@ -273,7 +348,7 @@ async function callAgentOnce(messages) {
   });
   const raw = await resp.text();
   if (!resp.ok) throw new Error("Provider " + resp.status + ": " + raw.slice(0, 500));
-  const data = JSON.parse(raw);
+  const data = normalizeResponse(JSON.parse(raw));
   // Kembalikan apa adanya yang dibutuhkan klien untuk melanjutkan loop.
   return {
     stop_reason: data.stop_reason,
