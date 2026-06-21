@@ -122,3 +122,40 @@ button:disabled { opacity: .6; cursor: default; }
 .src-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .src-reindex { width: auto; margin: 0; padding: 4px 10px; font-size: 12px; }
 .src-embed { font-size: 11px; color: #888; }
+
+/* ---- Provider Settings Panel ---- */
+.provider-panel { border: 1px solid #eee; border-radius: 8px; padding: 8px 10px; margin: 8px 0; background: #fafafa; }
+.provider-panel summary { cursor: pointer; font-weight: 600; font-size: 13px; color: #c2410c; }
+.provider-form {
+  padding: 10px 0; display: flex; flex-direction: column; gap: 10px;
+}
+.provider-form label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; margin: 0;
+}
+.provider-form input,
+.provider-form select {
+  padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;
+  font-family: inherit; width: 100%;
+}
+.provider-form input[type="password"] { font-family: monospace; }
+.provider-hint { font-size: 11px; color: #666; font-style: italic; }
+.provider-status {
+  padding: 8px; border-radius: 4px; font-size: 12px; min-height: 20px; color: #666;
+}
+.provider-status.ok { background: #d4edda; color: #155724; }
+.provider-status.err { background: #f8d7da; color: #721c24; }
+.provider-test,
+.provider-save {
+  width: 100%; padding: 8px; border: none; border-radius: 4px; font-size: 12px;
+  font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 0;
+}
+.provider-test {
+  background: #0969da; color: #fff; border: 1px solid #0969da;
+}
+.provider-test:hover { background: #0860ca; }
+.provider-test:disabled { background: #94a3b8; cursor: not-allowed; }
+.provider-save {
+  background: #2da44e; color: #fff; border: 1px solid #2da44e;
+}
+.provider-save:hover { background: #2c974b; }
+.provider-save:disabled { background: #94a3b8; cursor: not-allowed; }

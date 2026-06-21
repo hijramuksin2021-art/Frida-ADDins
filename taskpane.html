@@ -15,6 +15,30 @@
   </header>
 
   <main>
+    <details id="providerPanel" class="provider-panel">
+      <summary>📡 Provider Settings</summary>
+      <div class="provider-form">
+        <label>
+          Base URL
+          <input type="text" id="providerBaseUrl" placeholder="https://..." />
+        </label>
+        <label>
+          API Key
+          <input type="password" id="providerApiKey" placeholder="sk-..." />
+          <span id="providerKeyHint" class="provider-hint"></span>
+        </label>
+        <button id="providerTest" class="provider-test">Tes Koneksi</button>
+        <div id="providerStatus" class="provider-status"></div>
+        <label id="providerModelLabel" style="display:none">
+          Model
+          <select id="providerModel">
+            <option value="">-- Pilih model --</option>
+          </select>
+        </label>
+        <button id="providerSave" class="provider-save" disabled>Simpan Pengaturan</button>
+      </div>
+    </details>
+
     <details id="srcPanel" class="src-panel">
       <summary>📚 Sumber riset <span id="srcCount" class="src-count"></span></summary>
       <div id="srcDrop" class="src-drop">
@@ -59,5 +83,6 @@
   <script src="tools/safety.js"></script>
   <script src="taskpane.js"></script>
   <script src="sources-ui.js"></script>
+  <script src="provider-ui.js"></script>
 </body>
 </html>

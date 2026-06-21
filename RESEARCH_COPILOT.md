@@ -223,6 +223,7 @@ Modul `rag/embeddings.js` dispatch: remote (fetch `{baseUrl}/embeddings`) atau l
 | **R1** | Chunk + embed (lokal Xenova multilingual + remote pluggable) + vector store file + search_uploaded_sources + agent loop server/client | ✅ SELESAI |
 | **R2** | generate_paragraph_from_source + gate (skor retrieval) + verifikasi sitasi (primer/warisan, buang yang dikarang) + insert_paragraph | ✅ SELESAI |
 | **R3** | Citation engine (Crossref+CSL+citeproc) + insert_citation + insert_bibliography (APA7) | ✅ SELESAI |
+| **R3.5** | Provider Settings UI: Input Base URL + API Key + Tes Koneksi → dropdown model otomatis terisi → Simpan | ✅ SELESAI |
 | **R4** | resolve_source/alias, summarize_source, compare_sources | ✅ SELESAI |
 | **R5** | Gaya MLA/Chicago/Harvard/IEEE, footnote, update-all via content control | ⬜ |
 | **R6** | Faithfulness/NLI verify, quote-check, kalibrasi ambang | ⬜ |
@@ -322,6 +323,25 @@ Sitasi **TIDAK PERNAH** ditulis LLM. Alur:
 > dengan `insert_citation` + `insert_bibliography` terintegrasi di registry tool, safety, dan selfcheck.
 > Eksekusi nyata (Word.run) membutuhkan sideload; logika render deterministik telah terverifikasi
 > unit-test. R4 (resolve_source/alias, summarize, compare) dan R5 (update-all via CC) menyusul.
+
+## R3.5 — Catatan implementasi (Provider Settings UI)
+Fitur tambahan yang memungkinkan pengguna mengatur provider AI (Base URL, API Key, Model) langsung dari UI task pane tanpa harus edit `.env` manual dan restart server.
+
+### Modul baru & Modifikasi
+- **`provider-ui.js`** (baru) — Logika UI untuk Provider Settings. Menangani inisialisasi status, tes koneksi ke `/api/provider/test`, mempopulerkan dropdown model, dan menyimpan config baru ke `/api/provider`.
+- **`taskpane.html`** (modifikasi) — Menambahkan panel collapsible `📡 Provider Settings` dengan form input Base URL, API Key, Model dropdown, serta tombol Tes Koneksi & Simpan Pengaturan. Memuat `provider-ui.js`.
+- **`taskpane.css`** (modifikasi) — Menambahkan style pendukung untuk form provider agar serasi dengan UI aslinya.
+- **`rag/providerConfig.js`** & **Endpoint** (sudah ada) — Modul config provider (`get`, `set`, `status`) dan endpoint `/api/provider` (test koneksi via `listModels()`, get status, set config) diverifikasi fungsional dan terhubung dengan baik.
+
+### Alur Kerja & Keamanan
+1. Saat dimuat, UI mengambil status dari `GET /api/provider` lalu mempopulerkan field URL dan hint key saat ini (key penuh disembunyikan demi keamanan).
+2. Pengguna memasukkan Base URL & API Key, klik **Tes Koneksi** (panggil `POST /api/provider/test`).
+3. Endpoint server melakukan fetch `/v1/models` atau `/models` ke provider dengan API key tersebut. Jika sukses, daftar model yang didukung dikembalikan.
+4. UI mempopulerkan dropdown **Model** dari daftar tersebut dan mengaktifkan tombol **Simpan Pengaturan**.
+5. Klik **Simpan Pengaturan** (panggil `POST /api/provider`) → server menyimpan config ke `provider.local.json` (ter-gitignore).
+6. Perubahan langsung berlaku secara real-time untuk pemanggilan AI berikutnya (editing, agent loop, RAG) tanpa memerlukan restart server.
+
+> **STATUS R3.5: SELESAI.** UI Provider Settings fungsional secara end-to-end, terintegrasi dengan backend providerConfig dan persistensi lokal.
 
 ## R4 — Catatan implementasi (resolve, summarize, compare)
 Tiga tool baru: **resolve_source** (alias keyword), **summarize_source** (LLM grounded), **compare_sources** (LLM grounded).
