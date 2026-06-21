@@ -348,8 +348,8 @@ async function callAgentOnce(messages) {
   });
   const raw = await resp.text();
   if (!resp.ok) throw new Error("Provider " + resp.status + ": " + raw.slice(0, 500));
-  const data = normalizeResponse(JSON.parse(raw));
-  // Kembalikan apa adanya yang dibutuhkan klien untuk melanjutkan loop.
+  // Pakai parser yang sama dgn callOnce: tahan SSE (router lokal) maupun JSON (aerolink/OpenAI).
+  const data = parseBodyToAnthropic(resp.headers.get("content-type"), raw);
   return {
     stop_reason: data.stop_reason,
     content: data.content || [],
