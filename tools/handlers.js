@@ -427,17 +427,9 @@
 
     const loc = replaceSel ? Word.InsertLocation.replace : Word.InsertLocation.end;
 
-    // Insert table kosong dulu, lalu isi sel-selnya
-    const table = insertPoint.insertTable(rows, cols, loc);
-
-    // Isi nilai ke setiap cell
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const cell = table.getCell(r, c);
-        cell.clear();
-        cell.insertText(grid[r][c], Word.InsertLocation.replace);
-      }
-    }
+    // Isi langsung lewat argumen `values` insertTable (string[][]) — atomik & andal.
+    // (Word.TableCell tidak punya .clear(); mengisi per-sel manual rawan InvalidArgument.)
+    const table = insertPoint.insertTable(rows, cols, loc, grid);
 
     if (args.style) {
       try { table.style = args.style; } catch (e) { /* style tak ada: abaikan */ }
