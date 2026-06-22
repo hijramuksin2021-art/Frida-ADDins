@@ -970,9 +970,13 @@
   function canon(s) {
     return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   }
+  // Alias eksplisit: nama yang sering dipakai model tetapi bukan nama kanonik handler.
+  const HANDLER_ALIASES = { insert_table: "create_table", inserttable: "create_table" };
   function resolveHandler(name) {
     if (HANDLERS[name]) return { name, fn: HANDLERS[name] };
+    if (HANDLER_ALIASES[name]) return { name: HANDLER_ALIASES[name], fn: HANDLERS[HANDLER_ALIASES[name]] };
     const target = canon(name);
+    if (HANDLER_ALIASES[target]) return { name: HANDLER_ALIASES[target], fn: HANDLERS[HANDLER_ALIASES[target]] };
     let best = null;
     for (const key of Object.keys(HANDLERS)) {
       const ck = canon(key);

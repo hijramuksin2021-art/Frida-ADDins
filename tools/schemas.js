@@ -661,11 +661,16 @@
     resolve_source, summarize_source, compare_sources,  // R4
   ];
 
+  // Alias eksplisit: nama yang sering dipakai model tetapi bukan nama kanonik.
+  const ALIASES = { insert_table: "create_table", inserttable: "create_table" };
+
   // Pencocokan nama tahan-rename (provider kadang mengubah nama tool di respons).
   function canon(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
   function resolveName(name) {
     const byname = indexByName(SCHEMAS);
     if (byname[name]) return name;
+    if (ALIASES[name]) return ALIASES[name];
+    if (ALIASES[canon(name)]) return ALIASES[canon(name)];
     const target = canon(name);
     let best = null;
     SCHEMAS.forEach((s) => {
