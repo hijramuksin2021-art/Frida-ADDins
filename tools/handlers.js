@@ -129,6 +129,15 @@
 
   // ---- Tool: replace_text (write) ----
   async function replace_text(context, args) {
+    const find = String(args.find || "");
+    const replace = String(args.replace || "");
+    if (!find.trim()) return { error: "find kosong" };
+
+    // Word.Range.search punya batas string pencarian (~255 char). Kalau lebih panjang,
+    // jangan retry identik: pakai strategi alternatif yang lebih aman.
+    const SEARCH_LIMIT = 240;
+    const useFallbackReplacement = find.length > SEARCH_LIMIT;
+
     // Default whole_document bila target tak diberi.
     const scope =
       args.target && args.target.mode && args.target.mode !== "whole_document"
@@ -137,19 +146,57 @@
 
     let replaced = 0;
     for (const scopeRange of scope) {
-      const res = scopeRange.search(args.find, {
+      if (useFallbackReplacement) {
+        // Ambil potongan anchor pendek yang unik dari awal/akhir teks.
+        const anchorHead = find.slice(0, Math.min(SEARCH_LIMIT / 2, Math.max(20, Math.floor(find.length / 3))));
+        const anchorTail = find.slice(Math.max(0, find.length - Math.min(SEARCH_LIMIT / 2, Math.max(20, Math.floor(find.length / 3)))));
+
+        let candidates = null;
+        if (anchorHead && anchorTail && anchorHead !== anchorTail) {
+          const headHits = scopeRange.search(anchorHead, { matchCase: !!args.matchCase, matchWholeWord: !!args.wholeWord });
+          headHits.load("items");
+          const tailHits = scopeRange.search(anchorTail, { matchCase: !!args.matchCase, matchWholeWord: !!args.wholeWord });
+          tailHits.load("items");
+          await context.sync();
+          const headItems = headHits.items || [];
+          const tailItems = tailHits.items || [];
+          const tailSet = new Set(tailItems.map((r) => r._Id || r.id || r._ReferenceId || r));
+          candidates = headItems.filter((r) => tailSet.has(r._Id || r.id || r._ReferenceId || r));
+          if (!candidates.length) candidates = headItems.length ? headItems : tailItems;
+        } else {
+          const anchor = anchorHead || anchorTail;
+          const hits = scopeRange.search(anchor, { matchCase: !!args.matchCase, matchWholeWord: !!args.wholeWord });
+          hits.load("items");
+          await context.sync();
+          candidates = hits.items || [];
+        }
+
+        // Replace pada range kandidat saja. Jika target panjang, ini fallback yang aman.
+        for (const r of candidates || []) {
+          try {
+            r.insertText(replace, Word.InsertLocation.replace);
+            replaced++;
+          } catch (err) {
+            // Jangan retry string panjang yang sama; lanjut ke kandidat berikutnya.
+          }
+        }
+        await context.sync();
+        continue;
+      }
+
+      const res = scopeRange.search(find, {
         matchCase: !!args.matchCase,
         matchWholeWord: !!args.wholeWord,
       });
       res.load("items");
       await context.sync();
       res.items.forEach((r) => {
-        r.insertText(args.replace, Word.InsertLocation.replace);
+        r.insertText(replace, Word.InsertLocation.replace);
         replaced++;
       });
       await context.sync();
     }
-    return { replaced };
+    return { replaced, strategy: useFallbackReplacement ? "fallback-anchor" : "search" };
   }
 
   // ---- helper: resolve target -> Paragraph[] (untuk properti tingkat paragraf) ----
