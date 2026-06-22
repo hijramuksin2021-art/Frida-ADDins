@@ -14,9 +14,10 @@
 - **FIX: Batas langkah & efisiensi tool**: `MAX_STEPS`/`AGENT_MAX_STEPS` 12 → 40; prompt minta AI merencanakan & eksekusi dalam BATCH (target `heading`/`whole_document`, gabung properti).
 - **FIX: Pembuatan tabel Bab 3**: Alias `insert_table` → `create_table`; prompt mewajibkan pembuatan tabel saat deteksi kata kunci (tabel/instrumen/variabel/rancangan) & Bab 3 Metode Penelitian.
 - **FIX: Functional - SearchStringInvalidOrTooLong**: `replace_text` kini memakai strategi fallback anchor (potongan head/tail pendek) saat string pencarian melebihi ~240 char.
+- **FIX: Layout - Action History covers input area**: `.audit` diubah `flex: 0 0 auto` → `flex: 0 1 auto` (boleh mengalah/shrink dengan scroll internal, max-height 160px) sehingga tidak pernah mendorong/menutupi `.composer`.
 
 ## 3. Task Pending (Bug Fixes)
-- **FIX: Layout - Action History covers input area**: Menata ulang CSS agar panel riwayat aksi (`.audit`) memiliki scroll internal dan tidak menutupi area input chat (`.composer`).
+- (kosong — semua bug fix terjadwal sudah selesai)
 
 ---
 *Catatan: File ini ditulis sebagai konteks persistensi sebelum restart sesi.*

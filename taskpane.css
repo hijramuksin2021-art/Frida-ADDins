@@ -312,9 +312,11 @@ body {
 /* --- Audit Log --- */
 .audit {
   padding: 0 12px 8px;
-  flex: 0 0 auto;
+  /* flex-shrink:1 (bukan 0) agar panel ini MENGALAH saat ruang sempit, dengan
+     scroll internal — sehingga tidak pernah mendorong/menutupi .composer. */
+  flex: 0 1 auto;
   min-height: 0;
-  max-height: 180px;
+  max-height: 160px;
   overflow-y: auto;
   border-bottom: 1px solid var(--border);
 }
