@@ -12,8 +12,8 @@
   <DefaultLocale>id-ID</DefaultLocale>
   <DisplayName DefaultValue="FRIDA" />
   <Description DefaultValue="Asisten Word: perbaiki, tambah teks, dan rapikan tabel — langsung diterapkan." />
-  <IconUrl DefaultValue="https://localhost:3001/assets/icon-32.png" />
-  <HighResolutionIconUrl DefaultValue="https://localhost:3001/assets/icon-80.png" />
+  <IconUrl DefaultValue="https://localhost:3001/assets/icon-32.png?v=2" />
+  <HighResolutionIconUrl DefaultValue="https://localhost:3001/assets/icon-80.png?v=2" />
   <SupportUrl DefaultValue="https://localhost:3001/taskpane.html" />
 
   <AppDomains>
@@ -72,9 +72,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://localhost:3001/assets/icon-16.png" />
-        <bt:Image id="Icon.32" DefaultValue="https://localhost:3001/assets/icon-32.png" />
-        <bt:Image id="Icon.80" DefaultValue="https://localhost:3001/assets/icon-80.png" />
+        <bt:Image id="Icon.16" DefaultValue="https://localhost:3001/assets/icon-16.png?v=2" />
+        <bt:Image id="Icon.32" DefaultValue="https://localhost:3001/assets/icon-32.png?v=2" />
+        <bt:Image id="Icon.80" DefaultValue="https://localhost:3001/assets/icon-80.png?v=2" />
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3001/taskpane.html" />
