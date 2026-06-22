@@ -13,7 +13,9 @@
    Registry datang dari window.FRIDA_SCHEMAS & window.FRIDA_HANDLERS (file tools/). */
 
 const READ_TOOLS = new Set(["get_document_outline", "search_text"]);
-const MAX_STEPS = 12; // batas langkah loop (safety)
+const MAX_STEPS = 40; // batas langkah loop (safety) — dinaikkan dari 12 agar tugas
+                      // multi-format (heading + font + spasi + tabel) tidak mentok
+                      // sebelum selesai. AI tetap diminta membatch aksi (lihat prompt).
 
 // Nama tool dari provider kadang di-rename (lihat resolveHandler di handlers.js).
 // Resolusikan ke nama registry kanonik sebelum klasifikasi read/write & pelabelan.

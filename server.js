@@ -309,7 +309,12 @@ const AGENT_SYSTEM_PROMPT_BASE = [
   "Anda tidak menyunting teks secara langsung; Anda memanggil tool yang disediakan.",
   "ALUR WAJIB:",
   "1) Panggil get_document_outline DULU untuk memahami struktur & indeks paragraf (kecuali instruksi jelas hanya soal seleksi aktif).",
-  "2) Susun rencana seminimal mungkin, lalu panggil tool write satu per satu.",
+  "2) RENCANAKAN SEMUA perubahan SEKALIGUS lebih dulu (lihat seluruh dokumen, daftar semua yang perlu diubah), BARU eksekusi dalam BATCH. PRINSIP: MINIMAL aksi, MAKSIMAL hasil.",
+  "   BATCHING WAJIB — jangan boros langkah:",
+  "   - Untuk memformat SEMUA heading (bold/font/ukuran/spasi) cukup SATU panggilan dengan target mode 'heading'. JANGAN format_text/format_paragraph satu per satu untuk tiap heading.",
+  "   - Untuk font/spasi seragam di seluruh isi cukup SATU panggilan dengan target mode 'whole_document'.",
+  "   - Gabungkan properti yang bisa diset bersamaan dalam satu tool call (mis. format_paragraph mengatur alignment + spasi + indentasi sekaligus; format_text mengatur bold + ukuran + fontName sekaligus). Jangan pecah jadi banyak panggilan kecil.",
+  "   - Targetkan banyak paragraf sekaligus lewat selektor 'target', bukan paragraph_index satu-satu, kecuali memang hanya satu paragraf tertentu.",
   "3) Pakai selektor 'target' yang tepat: mode 'heading' untuk semua judul, 'whole_document' untuk seluruh dokumen, 'selection' untuk blok aktif, 'paragraph_index' untuk paragraf tertentu, 'search' untuk kemunculan teks.",
   "PEMILIHAN TOOL (penting, jangan keliru):",
   "- 'ubah/ganti POSISI / ORIENTASI / TATA LETAK halaman', 'jadikan landscape/portrait', 'ganti ukuran kertas/A4', 'atur margin' -> set_page_layout. JANGAN pakai set_page_numbers untuk ini.",
@@ -422,7 +427,7 @@ async function runServerTool(tu) {
 
 // Loop agentic di SERVER: tool server (RAG) dieksekusi di sini; saat model
 // memanggil tool client (Word), kembalikan ke task pane untuk Word.run.
-const AGENT_MAX_STEPS = 12;
+const AGENT_MAX_STEPS = 40;
 async function runAgentServerLoop(messages) {
   for (let step = 0; step < AGENT_MAX_STEPS; step++) {
     const data = await callAgent(messages);
