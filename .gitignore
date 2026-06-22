@@ -20,3 +20,6 @@ data/
 *.pem
 provider.local.json
 guideline.local.json
+
+# Sumber ikon resolusi tinggi (besar) — turunannya (icon-*.png) sudah di-commit
+assets/new-icon.png
