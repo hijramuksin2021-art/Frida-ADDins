@@ -411,9 +411,8 @@
         .map((line) => line.split(col).map((c) => c.trim()));
       insertPoint = sel;
       replaceSel = true;
-    } else {
-      insertPoint = context.document.body.getRange(Word.RangeLocation.end);
     }
+    // Non-seleksi: tidak butuh insertPoint; tabel ditambahkan via body.insertTable.
 
     if (!data || !data.length) return { error: "tidak ada data tabel" };
     const rows = data.length;
@@ -425,11 +424,18 @@
       return row;
     });
 
-    const loc = replaceSel ? Word.InsertLocation.replace : Word.InsertLocation.end;
-
-    // Isi langsung lewat argumen `values` insertTable (string[][]) — atomik & andal.
-    // (Word.TableCell tidak punya .clear(); mengisi per-sel manual rawan InvalidArgument.)
-    const table = insertPoint.insertTable(rows, cols, loc, grid);
+    // Isi sel langsung lewat argumen `values` insertTable (string[][]) — atomik & andal.
+    // PENTING: Range.insertTable HANYA menerima Before/After; hanya Body.insertTable
+    // yang menerima Start/End. Memakai 'End'/'Replace' pada Range => InvalidArgument.
+    let table;
+    if (replaceSel) {
+      // Sisipkan tabel sebelum seleksi lalu kosongkan teks asli yang sudah dikonversi.
+      table = insertPoint.insertTable(rows, cols, Word.InsertLocation.before, grid);
+      insertPoint.clear();
+    } else {
+      // Tambahkan tabel di akhir dokumen (Body, bukan Range).
+      table = context.document.body.insertTable(rows, cols, Word.InsertLocation.end, grid);
+    }
 
     if (args.style) {
       try { table.style = args.style; } catch (e) { /* style tak ada: abaikan */ }
