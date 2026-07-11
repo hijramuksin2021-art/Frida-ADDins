@@ -119,6 +119,22 @@ body {
   display: flex;
 }
 
+/* Tab Settings tak punya anak dengan scroll internal (seperti .chat-log / .src-list),
+   jadi tab ini sendiri yang harus scroll. Tanpa ini, di viewport pendek konten bawah
+   (tombol Simpan) terpotong karena .tab-content memakai overflow: hidden. */
+#tab-settings {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* scroll halus di trackpad/touch */
+}
+#tab-settings > :last-child {
+  margin-bottom: 12px; /* jaminan jarak agar tombol terakhir tak menempel tepi bawah */
+}
+/* Di flex-column yang scroll, anak default boleh menyusut (flex-shrink:1) sehingga
+   memampat, bukan memicu scroll. Kunci agar mereka tetap tinggi alaminya -> scroll aktif. */
+#tab-settings > * {
+  flex-shrink: 0;
+}
+
 /* --- Chat Tab --- */
 .chat-log {
   flex: 1;
