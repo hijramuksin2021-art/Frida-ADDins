@@ -76,6 +76,7 @@ ke dokumen.
    Muncul:
    ```
    FRIDA berjalan di  https://localhost:3001/taskpane.html
+   PUBLIC_URL: (default localhost) — set PUBLIC_URL untuk deploy publik, mis. Railway
    Provider : custom (key ✓)
    Model    : …
    ```
@@ -138,6 +139,41 @@ Prioritas nilai: **env (`.env`) → dioverride `provider.local.json` → dioverr
 > Catatan: proyek ini dahulu memakai `config.json` single-provider. Format itu sudah
 > digantikan. File `provider.local.json` lama berformat flat (`{ baseUrl, apiKey, model }`)
 > masih dibaca dan otomatis dipetakan ke provider **Custom** (setting lama tak hilang).
+
+---
+
+## Deploy publik (URL / Railway) & `PUBLIC_URL`
+
+Secara default add-in disajikan di `https://localhost:3001` (development). Untuk memakainya
+dari mana saja, deploy ke host publik (mis. **Railway**) lalu arahkan Word ke URL itu.
+
+Semua URL absolut add-in bersumber dari satu env var **`PUBLIC_URL`**:
+
+- Kosong / tidak di-set → otomatis fallback ke `https://localhost:3001` (dev lokal tetap jalan).
+- Di-set (mis. `https://frida-addins-production.up.railway.app`, **tanpa trailing slash**) →
+  dipakai untuk `manifest.xml` (SourceLocation, IconUrl, AppDomains, dll) dan log server.
+- Di Railway, bila `PUBLIC_URL` kosong, `RAILWAY_PUBLIC_DOMAIN` dibaca otomatis.
+
+`manifest.xml` **di-generate** dari `manifest.template.xml` (token `{{PUBLIC_URL}}`):
+
+```
+# set URL publik lalu regen manifest untuk sideload
+PUBLIC_URL=https://<app>.up.railway.app  npm run manifest
+```
+
+`npm start` juga meregen manifest otomatis (lewat `prestart`). Selain itu server
+menyajikan **`GET /manifest.xml` dinamis** — saat di-deploy, cukup arahkan Trusted Catalog /
+sideload ke `https://<app>.up.railway.app/manifest.xml`, tak perlu regen manual.
+
+> Frontend (`taskpane.html`, `provider-ui.js`, dll) memakai path relatif untuk semua
+> `fetch`, jadi otomatis mengikuti origin tempat add-in disajikan — tidak ada URL yang
+> perlu diubah di sisi klien.
+
+Langkah ringkas deploy Railway:
+1. Push repo ke GitHub (sudah), hubungkan ke Railway → deploy (`npm start`).
+2. Di Railway → Variables, set `PUBLIC_URL` = domain publik app (tanpa `/` di akhir),
+   plus API key provider yang dipakai (`ANTHROPIC_API_KEY` / dst).
+3. Sideload manifest dari `https://<app>.up.railway.app/manifest.xml` ke Word.
 
 ---
 

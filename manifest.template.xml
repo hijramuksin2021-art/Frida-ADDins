@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- FILE HASIL GENERATE — JANGAN edit langsung. Edit manifest.template.xml lalu jalankan `npm run manifest`. URL di bawah berasal dari PUBLIC_URL = https://localhost:3001 -->
+<!-- @@GENERATED_NOTICE@@ -->
 <OfficeApp
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -13,12 +13,12 @@
   <DefaultLocale>id-ID</DefaultLocale>
   <DisplayName DefaultValue="FRIDA" />
   <Description DefaultValue="Asisten Word: perbaiki, tambah teks, dan rapikan tabel — langsung diterapkan." />
-  <IconUrl DefaultValue="https://localhost:3001/assets/icon-32.png?v=2" />
-  <HighResolutionIconUrl DefaultValue="https://localhost:3001/assets/icon-80.png?v=2" />
-  <SupportUrl DefaultValue="https://localhost:3001/taskpane.html" />
+  <IconUrl DefaultValue="{{PUBLIC_URL}}/assets/icon-32.png?v=2" />
+  <HighResolutionIconUrl DefaultValue="{{PUBLIC_URL}}/assets/icon-80.png?v=2" />
+  <SupportUrl DefaultValue="{{PUBLIC_URL}}/taskpane.html" />
 
   <AppDomains>
-    <AppDomain>https://localhost:3001</AppDomain>
+    <AppDomain>{{PUBLIC_URL}}</AppDomain>
   </AppDomains>
 
   <Hosts>
@@ -26,7 +26,7 @@
   </Hosts>
 
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://localhost:3001/taskpane.html" />
+    <SourceLocation DefaultValue="{{PUBLIC_URL}}/taskpane.html" />
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -73,13 +73,13 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://localhost:3001/assets/icon-16.png?v=2" />
-        <bt:Image id="Icon.32" DefaultValue="https://localhost:3001/assets/icon-32.png?v=2" />
-        <bt:Image id="Icon.80" DefaultValue="https://localhost:3001/assets/icon-80.png?v=2" />
+        <bt:Image id="Icon.16" DefaultValue="{{PUBLIC_URL}}/assets/icon-16.png?v=2" />
+        <bt:Image id="Icon.32" DefaultValue="{{PUBLIC_URL}}/assets/icon-32.png?v=2" />
+        <bt:Image id="Icon.80" DefaultValue="{{PUBLIC_URL}}/assets/icon-80.png?v=2" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3001/taskpane.html" />
-        <bt:Url id="GetStarted.LearnMore" DefaultValue="https://localhost:3001/taskpane.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="{{PUBLIC_URL}}/taskpane.html" />
+        <bt:Url id="GetStarted.LearnMore" DefaultValue="{{PUBLIC_URL}}/taskpane.html" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GetStarted.Title" DefaultValue="FRIDA siap dipakai" />

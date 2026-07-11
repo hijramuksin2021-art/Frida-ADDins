@@ -57,13 +57,19 @@ let fileCfg = {};
 try { fileCfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8")); }
 catch (_) { /* boleh tidak ada */ }
 
+const { resolvePublicUrl, isLocalhost } = require("./scripts/publicUrl");
+
 const cfg = {
   apiKey:    process.env.AERO_API_KEY    || fileCfg.apiKey,
   baseUrl:   process.env.AERO_BASE_URL   || fileCfg.baseUrl || "https://capi.aerolink.lat/",
   model:     process.env.FRIDA_MODEL     || fileCfg.model   || "claude-opus-4-8",
   maxTokens: Number(process.env.FRIDA_MAX_TOKENS || fileCfg.maxTokens || 8000),
-  port:      Number(process.env.FRIDA_PORT || fileCfg.port || 3001),
+  port:      Number(process.env.PORT || process.env.FRIDA_PORT || fileCfg.port || 3001),
 };
+// URL publik add-in: PUBLIC_URL (mis. Railway) -> fallback https://localhost:<port>.
+// Dipakai untuk menyajikan manifest.xml dinamis + log. Path fetch di frontend relatif,
+// jadi tak perlu diubah — otomatis mengikuti origin mana pun add-in disajikan.
+cfg.publicUrl = resolvePublicUrl(cfg.port);
 
 if (!cfg.apiKey) {
   console.warn("Catatan: API key belum di-set di .env. Anda bisa mengaturnya lewat panel");
@@ -74,6 +80,15 @@ if (fileCfg.apiKey) {
 }
 
 const PORT = cfg.port;
+const PUBLIC_URL = cfg.publicUrl;
+
+// Manifest disajikan dinamis dari template + PUBLIC_URL, jadi deployment (mis. Railway)
+// otomatis memakai URL-nya sendiri tanpa perlu regen file. require di-lazy agar
+// server tetap jalan meski template hilang.
+function renderManifestXml() {
+  const { renderManifest } = require("./scripts/gen-manifest");
+  return renderManifest(PUBLIC_URL);
+}
 
 // ---- file statis yang boleh disajikan ----
 const MIME = {
@@ -677,6 +692,15 @@ async function handleEdit(req, res) {
   https
     .createServer(httpsOptions, (req, res) => {
       if (req.url.startsWith("/api/provider")) return handleProvider(req, res);
+      if (req.method === "GET" && req.url.split("?")[0] === "/manifest.xml") {
+        try {
+          const xml = renderManifestXml();
+          res.writeHead(200, { "Content-Type": "text/xml; charset=utf-8" });
+          return res.end(xml);
+        } catch (e) {
+          // template hilang -> fallback ke file statis manifest.xml lewat serveStatic
+        }
+      }
       if (req.url.startsWith("/api/guideline")) return handleGuideline(req, res);
       if (req.url.startsWith("/api/sources")) return handleSources(req, res);
       if (req.method === "POST" && req.url.startsWith("/api/agent")) return handleAgent(req, res);
@@ -687,7 +711,12 @@ async function handleEdit(req, res) {
     .listen(PORT, () => {
       const st0 = providerConfig.status();
       const act0 = st0.providers[st0.activeProvider] || {};
-      console.log("FRIDA berjalan di  https://localhost:" + PORT + "/taskpane.html");
+      console.log("FRIDA berjalan di  " + PUBLIC_URL + "/taskpane.html");
+      if (isLocalhost(PUBLIC_URL)) {
+        console.log("PUBLIC_URL: (default localhost) — set PUBLIC_URL untuk deploy publik, mis. Railway");
+      } else {
+        console.log("PUBLIC_URL: " + PUBLIC_URL + "  (manifest: " + PUBLIC_URL + "/manifest.xml)");
+      }
       console.log("Provider :", st0.activeProvider, act0.hasKey ? "(key ✓)" : "(key belum di-set)");
       console.log("Model    :", act0.model);
       console.log("Tools    :", TOOL_SCHEMAS.length, "terdaftar (" + TOOL_SCHEMAS.map(t => t.name).join(", ") + ")");

@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "cert": "office-addin-dev-certs install",
+    "manifest": "node scripts/gen-manifest.js",
+    "prestart": "node scripts/gen-manifest.js",
     "start": "node server.js",
     "check": "node tools/selfcheck.js"
   },
