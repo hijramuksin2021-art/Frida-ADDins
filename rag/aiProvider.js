@@ -61,6 +61,20 @@ const PROVIDER_LABELS = {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Gabungkan base URL + path relatif tanpa menduplikasi segmen "v1/".
+// Base bisa berakhir "/", "/v1", atau "/v1/"; path bisa "v1/messages" atau "v1/models".
+// Contoh: joinUrl("https://x/v1/", "v1/messages") -> "https://x/v1/messages" (bukan /v1/v1/).
+function joinUrl(base, path) {
+  let b = String(base || "").trim().replace(/\/+$/, ""); // buang trailing slash
+  let p = String(path || "").replace(/^\/+/, "");        // buang leading slash
+  const pFirst = p.split("/")[0];                          // segmen pertama path (mis. "v1")
+  if (pFirst && new RegExp("/" + pFirst + "$", "i").test(b)) {
+    // base sudah berakhir dengan segmen yang sama -> jangan ulang
+    p = p.slice(pFirst.length).replace(/^\/+/, "");
+  }
+  return b + "/" + p;
+}
+
 // ============================ util error ============================
 function extractErrText(raw) {
   if (!raw) return "";
@@ -194,7 +208,7 @@ async function callAnthropic(o) {
 // Ditambah header identitas Claude Code (claudeCodeHeaders) agar lolos gateway ber-proteksi
 // klien seperti AgentRouter ("unauthorized client detected").
 async function callCustom(o) {
-  const base = String(o.baseUrl || providerConfig.DEFAULT_CUSTOM_BASE).replace(/\/?$/, "/");
+  const base = String(o.baseUrl || providerConfig.DEFAULT_CUSTOM_BASE);
   const body = { model: o.model, max_tokens: o.maxTokens, messages: o.messages };
   if (o.system) body.system = o.system;
   if (o.tools) body.tools = o.tools;
@@ -204,7 +218,7 @@ async function callCustom(o) {
     "authorization": "Bearer " + o.apiKey,
     "anthropic-version": ANTHROPIC_VERSION,
   });
-  const { raw, contentType } = await postJson("custom", base + "v1/messages", headers, body);
+  const { raw, contentType } = await postJson("custom", joinUrl(base, "v1/messages"), headers, body);
   const data = parseBodyToAnthropic(contentType, raw);
   return { content: data.content || [], stop_reason: data.stop_reason || "end_turn" };
 }
@@ -423,8 +437,8 @@ async function callMessagesRetry(req, maxTries) {
 // ============================ daftar model & tes koneksi ============================
 // Ambil daftar model dari endpoint OpenAI-compatible {baseUrl}/v1/models (atau /models).
 async function listCustomModels(baseUrl, apiKey) {
-  const base = String(baseUrl || "").replace(/\/?$/, "/");
-  const urls = [base + "v1/models", base + "models"];
+  const base = String(baseUrl || "");
+  const urls = [joinUrl(base, "v1/models"), joinUrl(base, "models")];
   const headers = Object.assign(claudeCodeHeaders(), { "authorization": "Bearer " + apiKey, "x-api-key": apiKey });
   let lastErr = "";
   for (const u of urls) {
