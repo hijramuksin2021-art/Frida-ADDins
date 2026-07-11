@@ -26,6 +26,18 @@ Setiap provider menyimpan key & model-nya **terpisah**, jadi berpindah provider 
 menghapus key yang sudah Anda isi. Untuk provider resmi, endpoint dikunci di server
 (tidak bisa dioverride dari UI); hanya **Custom** yang punya Base URL bebas.
 
+### AgentRouter / gateway ber-proteksi klien
+
+Gateway Anthropic-compatible seperti **AgentRouter** (`https://agentrouter.org`) menolak
+klien tak dikenal dengan `unauthorized client detected` — proteksi agar endpoint mereka
+hanya dipakai klien resmi (Claude Code). FRIDA mengatasi ini untuk provider **Custom**
+dengan mengirim header identitas ala Claude Code, memakai token gateway Anda sendiri.
+
+Pakai: pilih provider **Custom**, isi **Base URL** = `https://agentrouter.org`, **API Key**
+= token AgentRouter Anda, Tes Koneksi, pilih model, Simpan. Bila gateway mengubah kriteria
+deteksinya, override lewat env `FRIDA_CLIENT_UA` / `FRIDA_ANTHROPIC_BETA` /
+`FRIDA_CUSTOM_HEADERS` (lihat `.env.example`).
+
 ---
 
 ## Cara kerja (singkat)

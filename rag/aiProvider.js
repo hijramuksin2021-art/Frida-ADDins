@@ -25,6 +25,33 @@ const ENDPOINTS = {
 };
 const ANTHROPIC_VERSION = "2023-06-01";
 
+// Beberapa gateway Anthropic-compatible (mis. AgentRouter/agentrouter.org) hanya melayani
+// klien yang dikenali (Claude Code) dan menolak yang lain: "unauthorized client detected".
+// Header ini membuat request adapter `custom` tampak seperti Claude Code CLI resmi supaya
+// lolos, memakai token gateway milik user sendiri. Semua bisa dioverride via env bila
+// gateway mengubah kriteria deteksinya.
+//   FRIDA_CLIENT_UA      -> ganti User-Agent penuh
+//   FRIDA_CLAUDE_CODE_VERSION -> ganti nomor versi di UA/paket
+//   FRIDA_ANTHROPIC_BETA -> ganti daftar flag anthropic-beta
+//   FRIDA_CUSTOM_HEADERS -> JSON objek header tambahan (mis. token khusus gateway)
+const CLAUDE_CODE_VERSION = process.env.FRIDA_CLAUDE_CODE_VERSION || "1.0.60";
+function claudeCodeHeaders() {
+  const ua = process.env.FRIDA_CLIENT_UA || ("claude-cli/" + CLAUDE_CODE_VERSION + " (external, cli)");
+  const h = {
+    "user-agent": ua,
+    "x-app": "cli",
+    "anthropic-beta": process.env.FRIDA_ANTHROPIC_BETA || "claude-code-20250219,oauth-2025-04-20",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "x-stainless-lang": "js",
+    "x-stainless-runtime": "node",
+    "x-stainless-package-version": CLAUDE_CODE_VERSION,
+  };
+  if (process.env.FRIDA_CUSTOM_HEADERS) {
+    try { Object.assign(h, JSON.parse(process.env.FRIDA_CUSTOM_HEADERS)); } catch (_) {}
+  }
+  return h;
+}
+
 const PROVIDER_LABELS = {
   anthropic: "Anthropic (Claude)",
   openai: "OpenAI",
@@ -164,17 +191,20 @@ async function callAnthropic(o) {
 // ============================ ADAPTER: Custom (existing) ============================
 // Pertahankan perilaku existing yang sudah jalan ke 9Router/Aerolink:
 // POST {baseUrl}v1/messages dgn x-api-key + Authorization Bearer + anthropic-version.
+// Ditambah header identitas Claude Code (claudeCodeHeaders) agar lolos gateway ber-proteksi
+// klien seperti AgentRouter ("unauthorized client detected").
 async function callCustom(o) {
   const base = String(o.baseUrl || providerConfig.DEFAULT_CUSTOM_BASE).replace(/\/?$/, "/");
   const body = { model: o.model, max_tokens: o.maxTokens, messages: o.messages };
   if (o.system) body.system = o.system;
   if (o.tools) body.tools = o.tools;
   if (o.tool_choice) body.tool_choice = o.tool_choice;
-  const { raw, contentType } = await postJson("custom", base + "v1/messages", {
+  const headers = Object.assign(claudeCodeHeaders(), {
     "x-api-key": o.apiKey,
     "authorization": "Bearer " + o.apiKey,
     "anthropic-version": ANTHROPIC_VERSION,
-  }, body);
+  });
+  const { raw, contentType } = await postJson("custom", base + "v1/messages", headers, body);
   const data = parseBodyToAnthropic(contentType, raw);
   return { content: data.content || [], stop_reason: data.stop_reason || "end_turn" };
 }
@@ -395,12 +425,13 @@ async function callMessagesRetry(req, maxTries) {
 async function listCustomModels(baseUrl, apiKey) {
   const base = String(baseUrl || "").replace(/\/?$/, "/");
   const urls = [base + "v1/models", base + "models"];
+  const headers = Object.assign(claudeCodeHeaders(), { "authorization": "Bearer " + apiKey, "x-api-key": apiKey });
   let lastErr = "";
   for (const u of urls) {
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 8000);
-      const resp = await fetch(u, { headers: { "authorization": "Bearer " + apiKey, "x-api-key": apiKey }, signal: ctrl.signal });
+      const resp = await fetch(u, { headers, signal: ctrl.signal });
       clearTimeout(t);
       const raw = await resp.text();
       if (!resp.ok) { lastErr = "HTTP " + resp.status + ": " + String(raw).slice(0, 120); continue; }
