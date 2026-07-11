@@ -8,7 +8,17 @@
   - Fix bug: Wiring guideline aktif ke general chat prompt (dinamis via `getAgentSystemPrompt`).
   - Fix bug: Deteksi nama guideline otomatis dalam chat (fuzzy matching via `guideline-fuzzy.js`).
 
-## 2. Selesai (Sesi Terakhir)
+## 2. Selesai (Sesi Multi-Provider)
+- **Refactor AI multi-provider**: Dukungan Anthropic (Claude), OpenAI, Google Gemini, dan Custom (OpenAI-compatible: 9Router/Aerolink/proxy).
+  - `rag/aiProvider.js` (baru): lapisan adapter — request/response internal (format Anthropic Messages) diterjemahkan ke/dari OpenAI & Gemini. Endpoint provider resmi dikunci; hanya Custom yang punya Base URL bebas.
+  - `rag/providerConfig.js`: config multi-provider runtime (`activeProvider` + `providers.{...}`), prioritas `.env → provider.local.json → set() dari UI`; `migrateLegacy()` memetakan `provider.local.json` flat lama → Custom (setting lama tak hilang).
+  - `rag/llm.js`: jadi wrapper tipis di atas `aiProvider` → generasi RAG ikut multi-provider.
+  - `server.js`: route `/api/provider` (+`/test`, `/models`) multi-provider; API key tak pernah bocor ke dokumen.
+  - `provider-ui.js` + `taskpane.html`: UI pilih 4 provider, key & model per-provider terpisah, tes koneksi (validasi key + muat model), simpan tanpa restart.
+  - `.env.example` + `README.md` diperbarui ke skema multi-provider.
+  - Server boot terverifikasi tanpa error. Di-push ke GitHub (`origin/master`).
+
+## 2b. Selesai (Sesi Sebelumnya)
 - **Update Ikon Ribbon**: Ikon lama diganti `new-icon.png` → resize ke `icon-16/32/80.png`. Manifest + cache-bust (`?v=2`) + clear Office Wef cache.
 - **Header Task Pane**: Logo dihapus, judul "FRIDA" + subtitle dipindah ke tengah, header dibuat compact.
 - **FIX: Batas langkah & efisiensi tool**: `MAX_STEPS`/`AGENT_MAX_STEPS` 12 → 40; prompt minta AI merencanakan & eksekusi dalam BATCH (target `heading`/`whole_document`, gabung properti).
