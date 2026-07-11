@@ -12,6 +12,14 @@
     gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
   };
 
+  // Fallback model untuk gateway custom Anthropic-compatible (mis. AgentRouter) yang TIDAK
+  // menyediakan /v1/models. Dipakai mengisi dropdown saat daftar dinamis tak tersedia,
+  // supaya user tetap memilih dari dropdown (tanpa ketik manual).
+  const CUSTOM_FALLBACK_MODELS = [
+    "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5",
+    "gpt-5", "gpt-4.1", "gemini-2.5-pro",
+  ];
+
   const KEY_PLACEHOLDER = {
     anthropic: "sk-ant-…",
     openai: "sk-…",
@@ -65,38 +73,17 @@
     const keyHint = document.getElementById("providerKeyHint");
     keyHint.textContent = st.hasKey && st.keyHint ? "Key tersimpan: " + st.keyHint : "Belum ada key tersimpan";
 
-    // Model: custom pakai input teks (bebas ketik + saran datalist), provider resmi pakai dropdown.
+    // Model dropdown
     const modelSelect = document.getElementById("providerModel");
-    const modelText = document.getElementById("providerModelText");
     if (provider === "custom") {
-      modelSelect.style.display = "none";
-      modelText.style.display = "block";
-      modelText.value = st.model || "";
-      // Isi saran datalist dari model tersimpan; lalu coba fetch daftar (bila gateway mendukung).
-      setModelSuggestions(st.model ? [st.model] : []);
+      // Custom: model dinamis. Tampilkan model tersimpan dulu, lalu coba muat daftar.
+      setModelOptions(modelSelect, st.model ? [st.model] : [], st.model);
       if (st.hasKey) fetchCustomModels(st.model);
     } else {
-      modelText.style.display = "none";
-      modelSelect.style.display = "block";
       setModelOptions(modelSelect, CURATED_MODELS[provider] || [], st.model);
     }
 
     providerStatus("");
-  }
-
-  // Nilai model aktif (dari input teks utk custom, atau dropdown utk provider resmi).
-  function getModelValue() {
-    const provider = document.getElementById("providerSelect").value;
-    return provider === "custom"
-      ? document.getElementById("providerModelText").value.trim()
-      : document.getElementById("providerModel").value;
-  }
-
-  // Isi opsi saran (datalist) untuk input model custom.
-  function setModelSuggestions(models) {
-    const dl = document.getElementById("providerModelList");
-    const list = models && models.length ? models : [];
-    dl.innerHTML = list.map((m) => '<option value="' + escHtml(m) + '"></option>').join("");
   }
 
   function setModelOptions(select, models, selected) {
@@ -112,15 +99,21 @@
   }
 
   // Ambil daftar model dinamis untuk custom (endpoint OpenAI-compatible /v1/models).
-  // Gateway seperti AgentRouter tak menyediakannya -> diamkan, user ketik model manual.
+  // Bila gateway tak menyediakannya (mis. AgentRouter), pakai daftar fallback agar dropdown
+  // tetap terisi tanpa ketik manual.
   async function fetchCustomModels(selected) {
+    const sel = document.getElementById("providerModel");
     try {
       const resp = await fetch("/api/provider/models?provider=custom");
       const data = await resp.json();
       if (data.ok && data.models && data.models.length) {
-        setModelSuggestions(data.models);
+        setModelOptions(sel, data.models, selected);
+        return;
       }
-    } catch (_) { /* diamkan; user bisa ketik model manual / Tes Koneksi */ }
+    } catch (_) { /* lanjut ke fallback */ }
+    // Fallback: gabung model tersimpan + daftar umum, dedup.
+    const merged = [selected].concat(CUSTOM_FALLBACK_MODELS).filter(Boolean);
+    setModelOptions(sel, merged.filter((m, i) => merged.indexOf(m) === i), selected);
   }
 
   async function testConnection() {
@@ -129,10 +122,14 @@
     const baseUrl = document.getElementById("providerBaseUrl").value.trim();
 
     if (provider === "custom" && !baseUrl) { providerStatus("Base URL wajib diisi untuk Custom", "err"); return; }
-    const model = getModelValue();
-    // Gateway custom yang cuma punya /v1/messages (mis. AgentRouter) divalidasi via ping,
-    // jadi model wajib diisi agar bisa dites.
-    if (provider === "custom" && !model) { providerStatus("Isi nama model dulu untuk Tes Koneksi", "err"); return; }
+
+    const sel = document.getElementById("providerModel");
+    // Custom: bila dropdown belum terisi (setup awal), isi dgn daftar fallback lebih dulu
+    // supaya Tes Koneksi punya model untuk ping (tanpa user mengetik).
+    if (provider === "custom" && !sel.value) {
+      setModelOptions(sel, CUSTOM_FALLBACK_MODELS, CUSTOM_FALLBACK_MODELS[0]);
+    }
+    const model = sel.value;
 
     const testBtn = document.getElementById("providerTest");
     testBtn.disabled = true;
@@ -153,12 +150,13 @@
       const data = await resp.json();
 
       if (data.ok) {
-        // Custom: isi saran datalist dari daftar model (bila gateway mengembalikannya).
-        if (provider === "custom" && data.models && data.models.length > 1) {
-          setModelSuggestions(data.models);
-          providerStatus("✓ Terhubung — " + data.models.length + " model tersedia", "ok");
+        if (provider === "custom") {
+          // Gateway mengembalikan daftar model -> pakai; kalau tidak, pakai fallback.
+          const models = (data.models && data.models.length > 1) ? data.models : CUSTOM_FALLBACK_MODELS;
+          setModelOptions(sel, models, sel.value || model);
+          providerStatus("✓ Terhubung — pilih model lalu Simpan", "ok");
         } else {
-          providerStatus("✓ Koneksi berhasil — API key & model valid", "ok");
+          providerStatus("✓ Koneksi berhasil — API key valid", "ok");
         }
       } else {
         providerStatus("Koneksi gagal: " + (data.error || "kesalahan tak diketahui"), "err");
@@ -175,10 +173,10 @@
     const provider = document.getElementById("providerSelect").value;
     const apiKey = document.getElementById("providerApiKey").value.trim();
     const baseUrl = document.getElementById("providerBaseUrl").value.trim();
-    const model = getModelValue();
+    const model = document.getElementById("providerModel").value;
     const st = (statusData && statusData.providers && statusData.providers[provider]) || {};
 
-    if (!model) { providerStatus(provider === "custom" ? "Isi nama model dulu" : "Pilih model dulu", "err"); return; }
+    if (!model) { providerStatus("Pilih model dulu", "err"); return; }
     if (provider === "custom" && !baseUrl) { providerStatus("Base URL wajib diisi untuk Custom", "err"); return; }
     if (!apiKey && !st.hasKey) { providerStatus("Isi API key dulu", "err"); return; }
 

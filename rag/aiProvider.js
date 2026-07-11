@@ -470,7 +470,11 @@ async function pingCustom(baseUrl, apiKey, model) {
     await callCustom({ baseUrl, apiKey, model, maxTokens: 1, messages: [{ role: "user", content: "ping" }] });
     return { ok: true, models: [model] };
   } catch (e) {
-    return { ok: false, error: String(e.message || e) };
+    const msg = String(e.message || e);
+    // Key salah (401/403) -> gagal. Tapi model salah (404) berarti KEY VALID, cuma model
+    // yang tak cocok -> anggap koneksi OK supaya user bisa pilih model lain dari dropdown.
+    if (/\(404\)/.test(msg)) return { ok: true, models: [] };
+    return { ok: false, error: msg };
   }
 }
 
