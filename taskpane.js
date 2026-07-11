@@ -44,7 +44,8 @@ Office.onReady((info) => {
   const undoBtn = document.getElementById("undo");
   if (undoBtn) undoBtn.onclick = onUndo;
   document.getElementById("instruction").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSend(); }
+    // Enter = kirim; Shift+Enter = baris baru. (Ctrl/Cmd+Enter juga kirim.)
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); onSend(); }
   });
 
   // Tab navigation
