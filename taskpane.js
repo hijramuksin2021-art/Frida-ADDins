@@ -123,6 +123,11 @@ async function onSend() {
   const text = input.value.trim();
   if (!text) { setStatus("Tulis dulu perintahnya untuk FRIDA.", "err"); return; }
 
+  // Snapshot riwayat SEBELUM giliran ini. Bila request gagal (mis. gateway memblokir
+  // konten / error jaringan), kita rollback ke sini supaya pesan yang gagal TIDAK ikut
+  // terkirim lagi di request berikutnya dan memblokir seluruh percakapan.
+  const historyBefore = messages.slice();
+
   addBubble("user", text);
   messages.push({ role: "user", content: text });
   input.value = "";
@@ -134,6 +139,7 @@ async function onSend() {
     await runAgentLoop();
     setStatus("Selesai.", "ok");
   } catch (err) {
+    messages = historyBefore; // buang giliran yang gagal dari riwayat
     setStatus("Gagal: " + (err.message || err), "err");
     addBubble("error", "⚠️ " + (err.message || String(err)));
   } finally {

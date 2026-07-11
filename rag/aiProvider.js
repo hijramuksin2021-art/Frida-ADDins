@@ -89,13 +89,18 @@ function extractErrText(raw) {
 // Pesan error yang ramah untuk UI (Bahasa Indonesia), bukan cuma "Gagal".
 function friendlyError(provider, status, raw) {
   const name = PROVIDER_LABELS[provider] || provider;
+  const detail = extractErrText(raw);
   let msg;
   if (status === 401 || status === 403) msg = "API key " + name + " tidak valid atau tidak berizin (" + status + ").";
   else if (status === 404) msg = "Model atau endpoint " + name + " tidak ditemukan (404). Periksa nama model.";
   else if (status === 429) msg = "Batas rate " + name + " tercapai (429). Coba lagi sebentar.";
   else if (status >= 500) msg = "Server " + name + " sedang bermasalah (" + status + ").";
+  // Filter konten gateway (mis. AgentRouter: "content-blocked"). Bukan error konfigurasi;
+  // beri saran parafrase agar user paham harus mengubah/menyingkat perintahnya.
+  else if (status === 400 && /content[-_ ]?block|blocked|moderation|filter/i.test(detail)) {
+    msg = name + " memblokir konten permintaan ini. Coba ubah/persingkat perintah atau kirim ulang.";
+  }
   else msg = name + " menolak permintaan (" + status + ").";
-  const detail = extractErrText(raw);
   return new Error(detail ? msg + " — " + detail : msg);
 }
 
