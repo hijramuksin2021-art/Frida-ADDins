@@ -241,48 +241,61 @@ body {
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
-.composer textarea {
-  width: 100%;
-  padding: 10px 12px;
+/* Kotak input: textarea + tombol Kirim jadi satu bidang berbingkai (gaya chat). */
+.composer-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 4px 4px 4px 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  font-family: inherit;
-  font-size: 13px;
-  resize: none;
-  min-height: 44px;
-  max-height: 100px;
-  transition: border-color 0.2s;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.composer textarea:focus {
-  outline: none;
+.composer-input:focus-within {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 2px rgba(194, 65, 12, 0.1);
 }
-.composer-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  resize: none;
+  min-height: 40px;
+  max-height: 120px;
 }
+.composer textarea:focus {
+  outline: none;
+}
+.send-btn {
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 2px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.send-btn:hover { background: var(--primary-hover); }
+.send-btn:disabled { background: #cbb3a6; cursor: not-allowed; }
 .check {
   font-size: 12px;
   color: var(--text-muted);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   font-weight: 400;
-}
-.send-btn {
-  width: auto !important;
-  padding: 8px 20px !important;
-  margin: 0 !important;
-  font-weight: 600;
-  border-radius: var(--radius-md) !important;
-}
-.hint {
-  font-size: 11px;
-  color: var(--text-light);
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .guideline-badge {

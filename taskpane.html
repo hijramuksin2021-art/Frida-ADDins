@@ -29,14 +29,13 @@
       <button id="undo" class="undo" style="display:none">↩️ Undo perubahan terakhir</button>
       <div id="audit" class="audit"></div>
       <div class="composer">
-        <textarea id="instruction" rows="2" placeholder="Tulis perintah untuk FRIDA…"></textarea>
-        <div class="composer-actions">
-          <label class="check" title="Tinjau dampak sebelum menerapkan">
-            <input type="checkbox" id="previewToggle" checked /> Tinjau
-          </label>
-          <button id="send" class="primary send-btn">Kirim</button>
+        <div class="composer-input">
+          <textarea id="instruction" rows="1" placeholder="Tulis perintah untuk FRIDA…"></textarea>
+          <button id="send" class="send-btn" title="Kirim (Enter)">Kirim</button>
         </div>
-        <p class="hint">Enter untuk kirim · Shift+Enter untuk baris baru. Tips: blok dulu bagian yang dimaksud bila perintah menyebut "ini" / "di sini".</p>
+        <label class="check" title="Tinjau dampak sebelum menerapkan">
+          <input type="checkbox" id="previewToggle" checked /> Tinjau
+        </label>
       </div>
     </div>
 
