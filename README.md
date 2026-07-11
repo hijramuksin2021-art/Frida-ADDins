@@ -1,23 +1,44 @@
-# Claude Editor — Add-in Word pribadi
+# FRIDA — Add-in Word pribadi (multi-provider AI)
 
-Add-in untuk Microsoft Word yang:
+**F**emale **R**eplacement **I**ntelligent **D**igital **A**ssistant — add-in untuk Microsoft Word yang:
 - membaca **seluruh isi dokumen** (atau hanya bagian yang Anda seleksi),
-- memperbaikinya sesuai instruksi Anda lewat **Claude** (via provider aerolink),
-- **langsung menerapkan** hasilnya ke dokumen.
+- memperbaikinya sesuai instruksi Anda lewat **AI provider pilihan Anda**,
+- **langsung menerapkan** hasilnya ke dokumen,
+- plus Research Copilot: unggah referensi (PDF/DOCX/TXT) lalu menulis dari sumber.
 
-Tidak perlu login akun Anthropic — karena memakai API key provider Anda sendiri (di `config.json`).
+Tidak perlu login akun mana pun — Anda memakai **API key provider Anda sendiri**, dan
+key tidak pernah masuk ke dokumen (disimpan di server, gitignored).
+
+---
+
+## Provider yang didukung
+
+FRIDA bisa dipindah antar provider **tanpa restart** lewat panel **⚙ Pengaturan → 🤖 AI Provider**:
+
+| Provider | Endpoint | Yang perlu diisi |
+|---|---|---|
+| **Anthropic (Claude)** | dikunci ke `api.anthropic.com` | API key |
+| **OpenAI** | dikunci ke `api.openai.com` | API key |
+| **Google Gemini** | dikunci ke `generativelanguage.googleapis.com` | API key |
+| **Custom** (OpenAI-compatible: 9Router / Aerolink / proxy lokal) | Base URL bebas | API key + Base URL |
+
+Setiap provider menyimpan key & model-nya **terpisah**, jadi berpindah provider tidak
+menghapus key yang sudah Anda isi. Untuk provider resmi, endpoint dikunci di server
+(tidak bisa dioverride dari UI); hanya **Custom** yang punya Base URL bebas.
 
 ---
 
 ## Cara kerja (singkat)
 
 ```
-Word (panel add-in)  ──►  https://localhost:3001  ──►  aerolink  ──►  Claude
-   Office.js                 server.js (proxy)        (pakai API key Anda)
+Word (panel add-in)  ──►  https://localhost:3001  ──►  adapter multi-provider  ──►  Anthropic / OpenAI / Gemini / Custom
+   Office.js                 server.js (proxy)         rag/aiProvider.js            (pakai API key Anda)
 ```
 
-`server.js` menyajikan add-in lewat HTTPS sekaligus menyimpan API key, jadi key tidak
-pernah masuk ke dokumen.
+`server.js` menyajikan add-in lewat HTTPS sekaligus menyimpan API key. `rag/aiProvider.js`
+menerjemahkan request/response internal (format Anthropic Messages) ke/dari format tiap
+provider, jadi pemanggil tak perlu tahu provider mana yang aktif. Key tidak pernah masuk
+ke dokumen.
 
 ---
 
@@ -39,6 +60,11 @@ pernah masuk ke dokumen.
    ```
    Akan muncul jendela konfirmasi Windows → klik **Yes**.
 
+4. **(Opsional) siapkan `.env`** — salin `.env.example` menjadi `.env` lalu isi key
+   awal. Semua nilai di sini opsional; Anda juga bisa mengisinya belakangan lewat panel
+   Pengaturan tanpa restart. Nilai yang diubah dari UI tersimpan di `provider.local.json`
+   (gitignored).
+
 ---
 
 ## Menjalankan
@@ -47,7 +73,12 @@ pernah masuk ke dokumen.
    ```
    npm start
    ```
-   Muncul: `Add-in Claude berjalan di https://localhost:3001/taskpane.html`
+   Muncul:
+   ```
+   FRIDA berjalan di  https://localhost:3001/taskpane.html
+   Provider : custom (key ✓)
+   Model    : …
+   ```
 
 2. **Daftarkan add-in ke Word (sideload)** — cukup sekali:
 
@@ -60,40 +91,62 @@ pernah masuk ke dokumen.
       **Show in Menu**, **OK**, lalu tutup & buka ulang Word.
 
    c. Di Word: **Insert → My Add-ins (Get Add-ins) → SHARED FOLDER →**
-      pilih **Claude Editor → Add**.
+      pilih **FRIDA → Add**.
 
-3. Di tab **Home** muncul tombol **Claude Editor**. Klik untuk membuka panel.
+3. Di tab **Home** muncul tombol untuk membuka panel FRIDA.
+
+---
+
+## Mengatur AI provider (dari dalam add-in)
+
+1. Buka panel FRIDA → tab **⚙ Pengaturan** → kartu **🤖 AI Provider**.
+2. Pilih **AI Provider** (Anthropic / OpenAI / Gemini / Custom).
+3. Isi **API Key**. Untuk **Custom**, isi juga **Base URL**.
+4. Klik **🔌 Tes Koneksi** untuk memvalidasi key (dan memuat daftar model untuk Custom).
+5. Pilih **Model**, lalu **💾 Simpan Pengaturan**. Provider yang dipilih langsung menjadi
+   aktif **tanpa restart** — berlaku untuk chat/edit maupun generasi Research Copilot.
+
+Field API key selalu tampil kosong demi keamanan; bila sudah ada key tersimpan akan
+muncul hint (mis. `sk-a…om`). Mengosongkan field saat menyimpan **tidak** menimpa key lama.
 
 ---
 
 ## Memakai
 
-1. Klik tombol **Claude Editor** di tab Home.
+1. Buka panel FRIDA, tab **💬 Chat**.
 2. Tulis instruksi, mis. *"Perbaiki semua typo dan tata bahasa, buat lebih formal."*
-3. (Opsional) centang **Hanya bagian yang saya seleksi** untuk membatasi ke teks terpilih.
-4. Klik:
-   - **Tinjau dulu** → lihat usulan perubahan tanpa mengubah dokumen, atau
-   - **Baca & Perbaiki** → langsung terapkan ke dokumen.
+3. (Opsional) blok/seleksi bagian yang dimaksud bila perintah menyebut "ini" / "di sini".
+4. Centang **Tinjau** untuk melihat dampak sebelum menerapkan, lalu **Kirim**.
 
 > Tip: setelah diterapkan, Anda tetap bisa **Ctrl+Z** di Word untuk membatalkan.
 
 ---
 
-## Mengubah pengaturan
+## Konfigurasi lewat `.env` (opsional)
 
-Edit `config.json`:
-- `apiKey` — API key provider Anda
-- `baseUrl` — alamat provider (default aerolink)
-- `model` — model yang dipakai (default `claude-opus-4-8`)
-- `maxTokens`, `port`
+Untuk mengatur nilai awal tanpa UI, salin `.env.example` → `.env`:
+
+- `FRIDA_PROVIDER` — provider aktif saat start: `anthropic` | `openai` | `gemini` | `custom`
+- `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` — key provider resmi
+- `AERO_API_KEY` / `AERO_BASE_URL` / `FRIDA_MODEL` — untuk provider **Custom**
+- `FRIDA_ANTHROPIC_MODEL` / `FRIDA_OPENAI_MODEL` / `FRIDA_GEMINI_MODEL` — model default
+- `FRIDA_MAX_TOKENS`, `FRIDA_PORT` — batas token & port server lokal
+- `EMBED_*` — konfigurasi embeddings untuk Research Copilot / RAG
+
+Prioritas nilai: **env (`.env`) → dioverride `provider.local.json` → dioverride simpan dari UI.**
+
+> Catatan: proyek ini dahulu memakai `config.json` single-provider. Format itu sudah
+> digantikan. File `provider.local.json` lama berformat flat (`{ baseUrl, apiKey, model }`)
+> masih dibaca dan otomatis dipetakan ke provider **Custom** (setting lama tak hilang).
 
 ---
 
 ## Catatan keamanan
 
-- `config.json` berisi API key Anda — **jangan dibagikan / di-screenshot / di-upload**.
-- Seluruh isi dokumen yang Anda proses akan dikirim ke server provider (aerolink).
-  Untuk dokumen sangat sensitif, pertimbangkan ini dulu.
+- `.env` dan `provider.local.json` berisi API key Anda — **jangan dibagikan /
+  di-screenshot / di-upload**. Keduanya sudah masuk `.gitignore`.
+- Isi dokumen yang Anda proses akan dikirim ke server provider yang aktif. Untuk dokumen
+  sangat sensitif, pertimbangkan provider dan ini terlebih dahulu.
 
 ---
 
@@ -103,5 +156,8 @@ Edit `config.json`:
 |---|---|
 | Word bilang add-in tidak aman / sertifikat | Jalankan `npm run cert` lalu restart Word |
 | Panel blank / "Gagal" | Pastikan `npm start` masih berjalan di jendela terminal |
-| "Jawaban model bukan JSON valid" | Coba lagi, atau perpendek instruksi |
+| "API key … belum di-set" | Isi & simpan key di ⚙ Pengaturan → AI Provider |
+| "API key … tidak valid (401/403)" | Cek ulang key; untuk Custom cek juga Base URL |
+| "Model atau endpoint tidak ditemukan (404)" | Periksa nama model di dropdown Model |
+| "Respons bukan JSON valid" | Coba lagi, atau perpendek instruksi |
 | Tombol add-in tak muncul | Ulangi langkah Trusted Catalog, restart Word |

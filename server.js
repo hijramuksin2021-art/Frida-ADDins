@@ -29,6 +29,7 @@ const embeddings = require("./rag/embeddings");
 const vectors = require("./rag/vectors");
 const cite = require("./rag/cite");
 const providerConfig = require("./rag/providerConfig");
+const aiProvider = require("./rag/aiProvider");
 const guidelineConfig = require("./rag/guidelineConfig");
 const { detectGuidelineFromMessage } = require("./rag/guideline-fuzzy");
 guidelineConfig.init();
@@ -174,105 +175,16 @@ const SYSTEM_PROMPT = [
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// --- Parser SSE + OpenAI → Anthropic ---
-// Router lokal mengembalikan SSE stream (Content-Type: text/event-stream) untuk semua request,
-// termasuk tool calls. Parser ini merakit stream menjadi format Anthropic standar.
-// Jika response JSON biasa (aerolink asli), normalizeOpenAI menanganinya.
-function parseBodyToAnthropic(contentType, raw) {
-  const isStream = (contentType || "").includes("event-stream");
+// Parser SSE/JSON provider -> format Anthropic kini ada di rag/aiProvider.js (dipakai semua adapter).
 
-  if (!isStream) {
-    let data;
-    try { data = JSON.parse(raw); } catch (e) { throw new Error("Respons bukan JSON valid: " + raw.slice(0, 200)); }
-    return normalizeOpenAI(data);
-  }
-
-  // SSE: rakit dari event-data lines (format Anthropic SSE)
-  const lines = raw.split(/\r?\n/);
-  const blocks = {};
-  let stopReason = "end_turn";
-  let msgId = "";
-
-  for (const line of lines) {
-    if (!line.startsWith("data:")) continue;
-    const payload = line.slice(5).trim();
-    if (!payload || payload === "[DONE]") continue;
-    let ev;
-    try { ev = JSON.parse(payload); } catch (_) { continue; }
-
-    if (ev.type === "message_start" && ev.message) {
-      msgId = ev.message.id || "";
-    } else if (ev.type === "content_block_start") {
-      const cb = ev.content_block || {};
-      blocks[ev.index] = { type: cb.type, id: cb.id, name: cb.name, partialJson: "", text: "" };
-    } else if (ev.type === "content_block_delta") {
-      const b = blocks[ev.index];
-      if (!b) continue;
-      const d = ev.delta || {};
-      if (d.type === "input_json_delta") b.partialJson += (d.partial_json || "");
-      if (d.type === "text_delta") b.text += (d.text || "");
-    } else if (ev.type === "message_delta") {
-      if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
-    }
-  }
-
-  const content = Object.keys(blocks).sort((a, b) => Number(a) - Number(b)).map(idx => {
-    const b = blocks[idx];
-    if (b.type === "tool_use") {
-      let input = {};
-      try { input = JSON.parse(b.partialJson || "{}"); } catch (_) {}
-      return { type: "tool_use", id: b.id, name: b.name, input };
-    }
-    return { type: "text", text: b.text || "" };
-  });
-
-  return { id: msgId, stop_reason: stopReason, content };
-}
-
-function normalizeOpenAI(data) {
-  if (data.content) return data;
-  const choice = (data.choices || [])[0];
-  if (!choice) return data;
-  const msg = choice.message || {};
-  const finish = choice.finish_reason || "stop";
-  const content = [];
-  if (msg.content) content.push({ type: "text", text: msg.content });
-  if (Array.isArray(msg.tool_calls)) {
-    for (const tc of msg.tool_calls) {
-      const fn = tc.function || {};
-      let input = {};
-      try { input = JSON.parse(fn.arguments || "{}"); } catch (_) {}
-      content.push({ type: "tool_use", id: tc.id || ("tc_" + Math.random().toString(36).slice(2)), name: fn.name || "", input });
-    }
-  }
-  const reasonMap = { tool_calls: "tool_use", stop: "end_turn", length: "max_tokens" };
-  return { id: data.id, model: data.model, stop_reason: reasonMap[finish] || finish, content };
-}
-
-// satu kali panggilan ke provider
+// satu kali panggilan ke provider (lewat adapter multi-provider)
 async function callOnce(userContent) {
-  const pc = providerConfig.get();
-  const url = pc.baseUrl.replace(/\/?$/, "/") + "v1/messages";
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": pc.apiKey,
-      "authorization": "Bearer " + pc.apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: pc.model,
-      max_tokens: pc.maxTokens || 8000,
-      system: SYSTEM_PROMPT,
-      tools: [EDIT_TOOL],
-      tool_choice: { type: "tool", name: "apply_changes" },
-      messages: [{ role: "user", content: userContent }],
-    }),
+  const data = await aiProvider.callMessages({
+    system: SYSTEM_PROMPT,
+    tools: [EDIT_TOOL],
+    tool_choice: { type: "tool", name: "apply_changes" },
+    messages: [{ role: "user", content: userContent }],
   });
-  const raw = await resp.text();
-  if (!resp.ok) throw new Error("Provider " + resp.status + ": " + raw.slice(0, 500));
-  const data = parseBodyToAnthropic(resp.headers.get("content-type"), raw);
   // Catatan: beberapa provider/proxy mengganti nama tool di respons,
   // jadi jangan cocokkan nama persis — ambil blok tool_use pertama saja.
   const toolUse = (data.content || []).find(b => b.type === "tool_use" && b.input);
@@ -371,29 +283,13 @@ function getAgentSystemPrompt() {
 }
 
 async function callAgentOnce(messages) {
-  const pc = providerConfig.get();
-  const url = pc.baseUrl.replace(/\/?$/, "/") + "v1/messages";
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": pc.apiKey,
-      "authorization": "Bearer " + pc.apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: pc.model,
-      max_tokens: pc.maxTokens || 8000,
-      system: getAgentSystemPrompt(),
-      tools: API_TOOLS,
-      tool_choice: { type: "auto" },
-      messages,
-    }),
+  // Adapter multi-provider: tahan Anthropic/OpenAI/Gemini/Custom, translate ke format seragam.
+  const data = await aiProvider.callMessages({
+    system: getAgentSystemPrompt(),
+    tools: API_TOOLS,
+    tool_choice: { type: "auto" },
+    messages,
   });
-  const raw = await resp.text();
-  if (!resp.ok) throw new Error("Provider " + resp.status + ": " + raw.slice(0, 500));
-  // Pakai parser yang sama dgn callOnce: tahan SSE (router lokal) maupun JSON (aerolink/OpenAI).
-  const data = parseBodyToAnthropic(resp.headers.get("content-type"), raw);
   return {
     stop_reason: data.stop_reason,
     content: data.content || [],
@@ -507,52 +403,60 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// ===================== Provider config (atur dari add-in) =====================
-// Ambil daftar model dari endpoint OpenAI-compatible {baseUrl}/v1/models (atau /models).
-async function listModels(baseUrl, apiKey) {
-  const base = String(baseUrl || "").replace(/\/?$/, "/");
-  const urls = [base + "v1/models", base + "models"];
-  let lastErr = "";
-  for (const u of urls) {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      const resp = await fetch(u, {
-        headers: { "authorization": "Bearer " + apiKey, "x-api-key": apiKey },
-        signal: ctrl.signal,
-      });
-      clearTimeout(t);
-      const raw = await resp.text();
-      if (!resp.ok) { lastErr = "HTTP " + resp.status + ": " + raw.slice(0, 120); continue; }
-      const data = JSON.parse(raw);
-      const list = (data.data || data.models || []).map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
-      if (list.length) return { ok: true, models: list };
-      lastErr = "daftar model kosong";
-    } catch (e) { lastErr = String(e.message || e); }
-  }
-  return { ok: false, error: lastErr || "tak bisa mengambil daftar model" };
-}
-
+// ===================== Provider config MULTI-PROVIDER (atur dari add-in) =====================
 function handleProvider(req, res) {
   const url = req.url.split("?")[0];
+
+  // GET /api/provider -> status multi-provider (tanpa bocor key)
   if (req.method === "GET" && url === "/api/provider") {
     return sendJson(res, 200, providerConfig.status());
   }
+
+  // GET /api/provider/models?provider=custom -> daftar model dinamis (custom saja)
+  if (req.method === "GET" && url === "/api/provider/models") {
+    const q = req.url.split("?")[1] || "";
+    const pm = q.match(/provider=([^&]+)/);
+    const provider = pm ? decodeURIComponent(pm[1]) : "custom";
+    if (provider !== "custom") return sendJson(res, 200, { ok: true, models: [] });
+    const stored = providerConfig.getProvider("custom");
+    if (!stored.apiKey) return sendJson(res, 200, { ok: false, error: "API key custom belum diisi" });
+    return aiProvider.listCustomModels(stored.baseUrl, stored.apiKey)
+      .then((r) => sendJson(res, r.ok ? 200 : 502, r))
+      .catch((e) => sendJson(res, 500, { error: String(e.message || e) }));
+  }
+
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", async () => {
     try {
       const b = JSON.parse(body || "{}");
+
+      // POST /api/provider/test -> tes provider terpilih { provider, apiKey?, baseUrl?, model? }
       if (req.method === "POST" && url === "/api/provider/test") {
-        // pakai key yang dikirim, atau key aktif bila kosong (mis. hanya ganti baseUrl)
-        const key = b.apiKey || providerConfig.get().apiKey;
-        const r = await listModels(b.baseUrl || providerConfig.get().baseUrl, key);
+        const provider = b.provider || providerConfig.getActive();
+        const stored = providerConfig.getProvider(provider);
+        const cfg = {
+          provider,
+          apiKey: b.apiKey || stored.apiKey,          // pakai key tersimpan bila field kosong
+          baseUrl: provider === "custom" ? (b.baseUrl || stored.baseUrl) : undefined,
+          model: b.model || stored.model,
+        };
+        const r = await aiProvider.testProvider(cfg);
         return sendJson(res, r.ok ? 200 : 502, r);
       }
+
+      // POST /api/provider -> simpan config per-provider + set provider aktif
       if (req.method === "POST" && url === "/api/provider") {
-        const st = providerConfig.set({ baseUrl: b.baseUrl, apiKey: b.apiKey, model: b.model });
-        return sendJson(res, 200, { ok: true, status: st });
+        if (b.provider) {
+          providerConfig.setProvider(b.provider, {
+            apiKey: b.apiKey, model: b.model, baseUrl: b.baseUrl, maxTokens: b.maxTokens,
+          });
+        }
+        const activeId = b.activeProvider || b.provider;
+        if (activeId) providerConfig.setActive(activeId);
+        return sendJson(res, 200, { ok: true, status: providerConfig.status() });
       }
+
       return sendJson(res, 404, { error: "rute provider tidak dikenal" });
     } catch (err) {
       return sendJson(res, 500, { error: String(err.message || err) });
@@ -781,10 +685,11 @@ async function handleEdit(req, res) {
       res.writeHead(405); res.end("Method not allowed");
     })
     .listen(PORT, () => {
-      const pc0 = providerConfig.status();
+      const st0 = providerConfig.status();
+      const act0 = st0.providers[st0.activeProvider] || {};
       console.log("FRIDA berjalan di  https://localhost:" + PORT + "/taskpane.html");
-      console.log("Provider :", pc0.baseUrl, pc0.hasKey ? "(key ✓)" : "(key belum di-set)");
-      console.log("Model    :", pc0.model);
+      console.log("Provider :", st0.activeProvider, act0.hasKey ? "(key ✓)" : "(key belum di-set)");
+      console.log("Model    :", act0.model);
       console.log("Tools    :", TOOL_SCHEMAS.length, "terdaftar (" + TOOL_SCHEMAS.map(t => t.name).join(", ") + ")");
       console.log("Biarkan jendela ini terbuka selama memakai add-in di Word.");
     });

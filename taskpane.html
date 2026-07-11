@@ -83,23 +83,32 @@
         <h3 class="settings-card-title">🤖 AI Provider</h3>
         <div class="provider-form">
           <label>
+            AI Provider
+            <select id="providerSelect">
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="custom">Custom (OpenAI-compatible / 9Router / Aerolink)</option>
+            </select>
+          </label>
+          <label id="providerBaseUrlLabel" style="display:none">
             Base URL
-            <input type="text" id="providerBaseUrl" placeholder="https://..." />
+            <input type="text" id="providerBaseUrl" placeholder="http://localhost:20128/v1/" />
           </label>
           <label>
             API Key
-            <input type="password" id="providerApiKey" placeholder="sk-..." />
+            <input type="password" id="providerApiKey" placeholder="masukkan API key…" />
             <span id="providerKeyHint" class="provider-hint"></span>
           </label>
-          <button id="providerTest" class="provider-test">🔌 Tes Koneksi</button>
-          <div id="providerStatus" class="provider-status"></div>
-          <label id="providerModelLabel" style="display:none">
+          <label id="providerModelLabel">
             Model
             <select id="providerModel">
               <option value="">-- Pilih model --</option>
             </select>
           </label>
-          <button id="providerSave" class="provider-save" disabled>💾 Simpan Pengaturan</button>
+          <button id="providerTest" class="provider-test">🔌 Tes Koneksi</button>
+          <div id="providerStatus" class="provider-status"></div>
+          <button id="providerSave" class="provider-save">💾 Simpan Pengaturan</button>
         </div>
       </div>
     </div>
