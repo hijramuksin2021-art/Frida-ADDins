@@ -449,7 +449,11 @@ async function listCustomModels(baseUrl, apiKey) {
       clearTimeout(t);
       const raw = await resp.text();
       if (!resp.ok) { lastErr = "HTTP " + resp.status + ": " + String(raw).slice(0, 120); continue; }
-      const data = JSON.parse(raw);
+      // Gateway tanpa endpoint models kadang balas halaman HTML -> jangan crash JSON.parse.
+      const trimmed = raw.replace(/^﻿/, "").trimStart();
+      if (trimmed.startsWith("<")) { lastErr = "endpoint tak mengembalikan JSON (kemungkinan tak menyediakan daftar model)"; continue; }
+      let data;
+      try { data = JSON.parse(raw); } catch (_) { lastErr = "respons bukan JSON"; continue; }
       const list = (data.data || data.models || []).map((m) => (typeof m === "string" ? m : m.id)).filter(Boolean);
       if (list.length) return { ok: true, models: list };
       lastErr = "daftar model kosong";
@@ -458,13 +462,30 @@ async function listCustomModels(baseUrl, apiKey) {
   return { ok: false, error: lastErr || "tak bisa mengambil daftar model" };
 }
 
+// Ping ringan ke endpoint chat custom (/v1/messages) memakai model tertentu, 1 token.
+// Dipakai sebagai fallback Tes Koneksi bila gateway tak punya /v1/models (mis. AgentRouter).
+async function pingCustom(baseUrl, apiKey, model) {
+  if (!model) return { ok: false, error: "Isi nama model dulu (gateway ini tak menyediakan daftar model otomatis)." };
+  try {
+    await callCustom({ baseUrl, apiKey, model, maxTokens: 1, messages: [{ role: "user", content: "ping" }] });
+    return { ok: true, models: [model] };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
 // Tes koneksi provider: validasi key via endpoint daftar model (tanpa membakar token generasi).
 async function testProvider(cfg) {
   const provider = cfg.provider;
   const apiKey = cfg.apiKey;
   if (!apiKey) return { ok: false, error: "API key belum diisi." };
   try {
-    if (provider === "custom") return await listCustomModels(cfg.baseUrl, apiKey);
+    if (provider === "custom") {
+      const r = await listCustomModels(cfg.baseUrl, apiKey);
+      if (r.ok) return r;
+      // Gateway tak menyediakan /v1/models (mis. AgentRouter balas HTML) -> ping /v1/messages.
+      return await pingCustom(cfg.baseUrl, apiKey, cfg.model);
+    }
     let url, headers;
     if (provider === "anthropic") { url = ENDPOINTS.anthropic + "v1/models"; headers = { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION }; }
     else if (provider === "openai") { url = ENDPOINTS.openai + "models"; headers = { "authorization": "Bearer " + apiKey }; }

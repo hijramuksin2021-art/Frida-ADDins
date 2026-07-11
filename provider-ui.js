@@ -65,17 +65,38 @@
     const keyHint = document.getElementById("providerKeyHint");
     keyHint.textContent = st.hasKey && st.keyHint ? "Key tersimpan: " + st.keyHint : "Belum ada key tersimpan";
 
-    // Model dropdown
+    // Model: custom pakai input teks (bebas ketik + saran datalist), provider resmi pakai dropdown.
     const modelSelect = document.getElementById("providerModel");
+    const modelText = document.getElementById("providerModelText");
     if (provider === "custom") {
-      // Custom: model dinamis. Tampilkan model tersimpan dulu, lalu coba fetch daftar.
-      setModelOptions(modelSelect, st.model ? [st.model] : [], st.model);
+      modelSelect.style.display = "none";
+      modelText.style.display = "block";
+      modelText.value = st.model || "";
+      // Isi saran datalist dari model tersimpan; lalu coba fetch daftar (bila gateway mendukung).
+      setModelSuggestions(st.model ? [st.model] : []);
       if (st.hasKey) fetchCustomModels(st.model);
     } else {
+      modelText.style.display = "none";
+      modelSelect.style.display = "block";
       setModelOptions(modelSelect, CURATED_MODELS[provider] || [], st.model);
     }
 
     providerStatus("");
+  }
+
+  // Nilai model aktif (dari input teks utk custom, atau dropdown utk provider resmi).
+  function getModelValue() {
+    const provider = document.getElementById("providerSelect").value;
+    return provider === "custom"
+      ? document.getElementById("providerModelText").value.trim()
+      : document.getElementById("providerModel").value;
+  }
+
+  // Isi opsi saran (datalist) untuk input model custom.
+  function setModelSuggestions(models) {
+    const dl = document.getElementById("providerModelList");
+    const list = models && models.length ? models : [];
+    dl.innerHTML = list.map((m) => '<option value="' + escHtml(m) + '"></option>').join("");
   }
 
   function setModelOptions(select, models, selected) {
@@ -91,14 +112,15 @@
   }
 
   // Ambil daftar model dinamis untuk custom (endpoint OpenAI-compatible /v1/models).
+  // Gateway seperti AgentRouter tak menyediakannya -> diamkan, user ketik model manual.
   async function fetchCustomModels(selected) {
     try {
       const resp = await fetch("/api/provider/models?provider=custom");
       const data = await resp.json();
       if (data.ok && data.models && data.models.length) {
-        setModelOptions(document.getElementById("providerModel"), data.models, selected);
+        setModelSuggestions(data.models);
       }
-    } catch (_) { /* diamkan; user bisa Tes Koneksi manual */ }
+    } catch (_) { /* diamkan; user bisa ketik model manual / Tes Koneksi */ }
   }
 
   async function testConnection() {
@@ -107,6 +129,10 @@
     const baseUrl = document.getElementById("providerBaseUrl").value.trim();
 
     if (provider === "custom" && !baseUrl) { providerStatus("Base URL wajib diisi untuk Custom", "err"); return; }
+    const model = getModelValue();
+    // Gateway custom yang cuma punya /v1/messages (mis. AgentRouter) divalidasi via ping,
+    // jadi model wajib diisi agar bisa dites.
+    if (provider === "custom" && !model) { providerStatus("Isi nama model dulu untuk Tes Koneksi", "err"); return; }
 
     const testBtn = document.getElementById("providerTest");
     testBtn.disabled = true;
@@ -121,19 +147,18 @@
           provider,
           apiKey: apiKey || undefined,               // kosong = pakai key tersimpan
           baseUrl: provider === "custom" ? baseUrl : undefined,
-          model: document.getElementById("providerModel").value || undefined,
+          model: model || undefined,
         }),
       });
       const data = await resp.json();
 
       if (data.ok) {
-        // Custom: isi dropdown dari daftar model yang dikembalikan.
-        if (provider === "custom" && data.models && data.models.length) {
-          setModelOptions(document.getElementById("providerModel"), data.models,
-            document.getElementById("providerModel").value);
+        // Custom: isi saran datalist dari daftar model (bila gateway mengembalikannya).
+        if (provider === "custom" && data.models && data.models.length > 1) {
+          setModelSuggestions(data.models);
           providerStatus("✓ Terhubung — " + data.models.length + " model tersedia", "ok");
         } else {
-          providerStatus("✓ Koneksi berhasil — API key valid", "ok");
+          providerStatus("✓ Koneksi berhasil — API key & model valid", "ok");
         }
       } else {
         providerStatus("Koneksi gagal: " + (data.error || "kesalahan tak diketahui"), "err");
@@ -150,10 +175,10 @@
     const provider = document.getElementById("providerSelect").value;
     const apiKey = document.getElementById("providerApiKey").value.trim();
     const baseUrl = document.getElementById("providerBaseUrl").value.trim();
-    const model = document.getElementById("providerModel").value;
+    const model = getModelValue();
     const st = (statusData && statusData.providers && statusData.providers[provider]) || {};
 
-    if (!model) { providerStatus("Pilih model dulu", "err"); return; }
+    if (!model) { providerStatus(provider === "custom" ? "Isi nama model dulu" : "Pilih model dulu", "err"); return; }
     if (provider === "custom" && !baseUrl) { providerStatus("Base URL wajib diisi untuk Custom", "err"); return; }
     if (!apiKey && !st.hasKey) { providerStatus("Isi API key dulu", "err"); return; }
 
