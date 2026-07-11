@@ -7,6 +7,7 @@
 // Jalankan:  npm start   (setelah `npm install` dan `npm run cert`)
 
 const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const devCerts = require("office-addin-dev-certs");
@@ -679,7 +680,60 @@ async function handleEdit(req, res) {
   });
 }
 
+// Deteksi lingkungan hosted (Railway/dll): TLS di-terminasi di edge platform, jadi app
+// harus listen HTTP biasa di process.env.PORT. dev-certs (HTTPS lokal) TIDAK tersedia di
+// container (butuh sudo/cert store) → memaksanya bikin crash-loop. Lokal tetap HTTPS.
+const HOSTED = !!(
+  process.env.USE_HTTP === "1" ||
+  process.env.RAILWAY_PUBLIC_DOMAIN ||
+  process.env.RAILWAY_ENVIRONMENT ||
+  process.env.RAILWAY_PROJECT_ID ||
+  (process.env.PUBLIC_URL && !isLocalhost(PUBLIC_URL))
+);
+
+function requestHandler(req, res) {
+  if (req.url.startsWith("/api/provider")) return handleProvider(req, res);
+  if (req.method === "GET" && req.url.split("?")[0] === "/manifest.xml") {
+    try {
+      const xml = renderManifestXml();
+      res.writeHead(200, { "Content-Type": "text/xml; charset=utf-8" });
+      return res.end(xml);
+    } catch (e) {
+      // template hilang -> fallback ke file statis manifest.xml lewat serveStatic
+    }
+  }
+  if (req.url.startsWith("/api/guideline")) return handleGuideline(req, res);
+  if (req.url.startsWith("/api/sources")) return handleSources(req, res);
+  if (req.method === "POST" && req.url.startsWith("/api/agent")) return handleAgent(req, res);
+  if (req.method === "POST" && req.url.startsWith("/api/edit")) return handleEdit(req, res);
+  if (req.method === "GET") return serveStatic(req, res);
+  res.writeHead(405); res.end("Method not allowed");
+}
+
+function onListening(scheme) {
+  const st0 = providerConfig.status();
+  const act0 = st0.providers[st0.activeProvider] || {};
+  console.log("FRIDA berjalan (" + scheme + ") di  " + PUBLIC_URL + "/taskpane.html");
+  if (isLocalhost(PUBLIC_URL)) {
+    console.log("PUBLIC_URL: (default localhost) — set PUBLIC_URL untuk deploy publik, mis. Railway");
+  } else {
+    console.log("PUBLIC_URL: " + PUBLIC_URL + "  (manifest: " + PUBLIC_URL + "/manifest.xml)");
+  }
+  console.log("Listen    : " + scheme + " port " + PORT + (HOSTED ? " (hosted: TLS di edge platform)" : ""));
+  console.log("Provider :", st0.activeProvider, act0.hasKey ? "(key ✓)" : "(key belum di-set)");
+  console.log("Model    :", act0.model);
+  console.log("Tools    :", TOOL_SCHEMAS.length, "terdaftar (" + TOOL_SCHEMAS.map(t => t.name).join(", ") + ")");
+  if (!HOSTED) console.log("Biarkan jendela ini terbuka selama memakai add-in di Word.");
+}
+
 (async () => {
+  // Hosted (Railway): HTTP polos, bind 0.0.0.0, tanpa dev-certs.
+  if (HOSTED) {
+    http.createServer(requestHandler).listen(PORT, "0.0.0.0", () => onListening("http"));
+    return;
+  }
+
+  // Lokal: HTTPS dengan dev-certs tepercaya (wajib agar Word menerima add-in).
   let httpsOptions;
   try {
     httpsOptions = await devCerts.getHttpsServerOptions();
@@ -688,38 +742,5 @@ async function handleEdit(req, res) {
     console.error(String(e.message || e));
     process.exit(1);
   }
-
-  https
-    .createServer(httpsOptions, (req, res) => {
-      if (req.url.startsWith("/api/provider")) return handleProvider(req, res);
-      if (req.method === "GET" && req.url.split("?")[0] === "/manifest.xml") {
-        try {
-          const xml = renderManifestXml();
-          res.writeHead(200, { "Content-Type": "text/xml; charset=utf-8" });
-          return res.end(xml);
-        } catch (e) {
-          // template hilang -> fallback ke file statis manifest.xml lewat serveStatic
-        }
-      }
-      if (req.url.startsWith("/api/guideline")) return handleGuideline(req, res);
-      if (req.url.startsWith("/api/sources")) return handleSources(req, res);
-      if (req.method === "POST" && req.url.startsWith("/api/agent")) return handleAgent(req, res);
-      if (req.method === "POST" && req.url.startsWith("/api/edit")) return handleEdit(req, res);
-      if (req.method === "GET") return serveStatic(req, res);
-      res.writeHead(405); res.end("Method not allowed");
-    })
-    .listen(PORT, () => {
-      const st0 = providerConfig.status();
-      const act0 = st0.providers[st0.activeProvider] || {};
-      console.log("FRIDA berjalan di  " + PUBLIC_URL + "/taskpane.html");
-      if (isLocalhost(PUBLIC_URL)) {
-        console.log("PUBLIC_URL: (default localhost) — set PUBLIC_URL untuk deploy publik, mis. Railway");
-      } else {
-        console.log("PUBLIC_URL: " + PUBLIC_URL + "  (manifest: " + PUBLIC_URL + "/manifest.xml)");
-      }
-      console.log("Provider :", st0.activeProvider, act0.hasKey ? "(key ✓)" : "(key belum di-set)");
-      console.log("Model    :", act0.model);
-      console.log("Tools    :", TOOL_SCHEMAS.length, "terdaftar (" + TOOL_SCHEMAS.map(t => t.name).join(", ") + ")");
-      console.log("Biarkan jendela ini terbuka selama memakai add-in di Word.");
-    });
+  https.createServer(httpsOptions, requestHandler).listen(PORT, () => onListening("https"));
 })();
