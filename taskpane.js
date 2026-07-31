@@ -138,9 +138,6 @@ async function onSend() {
   try {
     await runAgentLoop();
     setStatus("Selesai.", "ok");
-    // Bersihkan riwayat aksi setelah selesai agar chat tetap rapi
-    const auditBox = document.getElementById("audit");
-    if (auditBox) auditBox.innerHTML = "";
   } catch (err) {
     messages = historyBefore; // buang giliran yang gagal dari riwayat
     setStatus("Gagal: " + (err.message || err), "err");
@@ -148,6 +145,10 @@ async function onSend() {
   } finally {
     hideTypingIndicator();
     busy(false);
+    // Bersihkan riwayat aksi setelah selesai agar chat tetap rapi
+    var auditBox = document.getElementById("audit");
+    if (auditBox) auditBox.innerHTML = "";
+    if (audit && audit.entries) audit.entries = [];
   }
 }
 
