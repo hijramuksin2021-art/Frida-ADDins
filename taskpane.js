@@ -78,6 +78,9 @@ Office.onReady((info) => {
   // [FITUR 4] Refresh stats
   var statsRefBtn = document.getElementById("statsRefresh");
   if (statsRefBtn) statsRefBtn.onclick = updateDocStats;
+
+  // [FASE 2] Inisialisasi Fitur Seleksi Cerdas
+  initSelectionContext();
 });
 
 // ---------- UI helpers ----------
@@ -550,6 +553,7 @@ function initDarkMode() {
 // FITUR 3: TEMPLATE PERINTAH CEPAT (QUICK PROMPTS)
 // =====================================================================
 var QUICK_TEMPLATES = [
+  { label: "🧐 Analisis Dokumen", text: "Tolong baca struktur dokumen ini. Berikan analisis dan kritik bertindak sebagai dosen pembimbing mengenai: 1. Alur logika antar bagian. 2. Tanda bahaya/saran perbaikan. 3. Konsistensi gaya bahasa akademik." },
   { label: "📝 Format Skripsi", text: "Format seluruh dokumen ini sesuai panduan penulisan yang aktif (heading, font, spasi, margin)." },
   { label: "✏️ Perbaiki Ejaan", text: "Perbaiki semua typo, ejaan, dan tata bahasa di seluruh dokumen. Pertahankan makna asli." },
   { label: "📊 Buat Tabel", text: "Buatkan tabel yang relevan berdasarkan konteks dokumen ini." },
@@ -611,5 +615,61 @@ function updateDocStats() {
       // Gagal baca dokumen — abaikan (mungkin tidak ada dokumen terbuka)
     });
   } catch (_) { /* Word.run tidak tersedia */ }
+}
+
+// =====================================================================
+// FASE 2: AKSI BERBASIS TEKS TERPILIH (CONTEXT-AWARE SELECTION)
+// =====================================================================
+function initSelectionContext() {
+  try {
+    Office.context.document.addHandlerAsync(
+      Office.EventType.DocumentSelectionChanged,
+      onSelectionChanged
+    );
+  } catch (err) {
+    console.warn("Gagal inisialisasi DocumentSelectionChanged:", err);
+  }
+
+  // Pasang event ke tombol-tombol
+  var btns = document.querySelectorAll(".sel-btn");
+  btns.forEach(function (btn) {
+    btn.onclick = function () {
+      if (running) return;
+      var prompt = btn.getAttribute("data-action");
+      if (!prompt) return;
+      var input = document.getElementById("instruction");
+      input.value = prompt;
+      onSend(); // Langsung kirim
+    };
+  });
+}
+
+function onSelectionChanged() {
+  if (running) return; // Jangan ubah panel saat AI sedang jalan
+  try {
+    Word.run(function (context) {
+      var selection = context.document.getSelection();
+      selection.load("text");
+      return context.sync().then(function () {
+        var text = (selection.text || "").trim();
+        var panel = document.getElementById("selectionContext");
+        var preview = document.getElementById("selPreview");
+        if (!panel || !preview) return;
+
+        if (text.length > 5) {
+          // Tampilkan panel
+          preview.textContent = '"' + text + '"';
+          panel.classList.remove("hidden");
+        } else {
+          // Sembunyikan panel
+          panel.classList.add("hidden");
+        }
+      });
+    }).catch(function () {
+      // abaikan jika gagal baca
+    });
+  } catch (e) {
+    // abaikan
+  }
 }
 

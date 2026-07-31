@@ -39,6 +39,20 @@
       <div id="audit" class="audit"></div>
       <!-- QUICK PROMPTS -->
       <div id="quickPrompts" class="quick-prompts"></div>
+
+      <!-- SELECTION CONTEXT -->
+      <div id="selectionContext" class="selection-context hidden">
+        <div class="sel-header">
+          <span class="sel-title">Teks Terpilih:</span>
+          <span id="selPreview" class="sel-preview">...</span>
+        </div>
+        <div class="sel-actions">
+          <button class="sel-btn" data-action="Parafrase teks yang sedang saya seleksi agar lebih mengalir secara akademis.">✨ Parafrase</button>
+          <button class="sel-btn" data-action="Ringkas teks yang sedang saya seleksi menjadi poin-poin penting.">📝 Ringkas</button>
+          <button class="sel-btn" data-action="Perbaiki ejaan, salah ketik, dan tata bahasa pada teks yang sedang saya seleksi.">✅ Perbaiki Ejaan</button>
+        </div>
+      </div>
+
       <div class="composer">
         <div class="composer-input">
           <textarea id="instruction" rows="1" placeholder="Tulis perintah untuk FRIDA…"></textarea>
