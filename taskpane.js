@@ -138,6 +138,9 @@ async function onSend() {
   try {
     await runAgentLoop();
     setStatus("Selesai.", "ok");
+    // Bersihkan riwayat aksi setelah selesai agar chat tetap rapi
+    const auditBox = document.getElementById("audit");
+    if (auditBox) auditBox.innerHTML = "";
   } catch (err) {
     messages = historyBefore; // buang giliran yang gagal dari riwayat
     setStatus("Gagal: " + (err.message || err), "err");
