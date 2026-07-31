@@ -108,11 +108,22 @@
         <div class="provider-form">
           <label>
             Profil Fakultas / Institusi
-            <select id="guidelineSelect">
-              <option value="">-- Tidak ada / Generik --</option>
-            </select>
+            <div style="display:flex; gap:5px;">
+              <select id="guidelineSelect" style="flex:1;">
+                <option value="">-- Tidak ada / Generik --</option>
+              </select>
+              <button id="btnDeleteGuideline" class="icon-btn" title="Hapus Panduan" style="padding:4px 8px;">🗑️</button>
+            </div>
           </label>
           <div id="activeGuidelineDesc" class="provider-hint" style="margin-top:4px;"></div>
+          
+          <div style="margin-top:10px; border-top: 1px dashed var(--border); padding-top:10px;">
+            <label style="margin-bottom:4px; font-size:0.85em; opacity:0.8;">Upload Pedoman Baru (.json)</label>
+            <div style="display:flex; gap:5px;">
+              <input type="file" id="guidelineFileInput" accept=".json" style="flex:1; font-size:11px;" />
+              <button id="btnUploadGuideline" class="btn-primary" style="padding:4px 10px; font-size:12px;">Upload</button>
+            </div>
+          </div>
         </div>
       </div>
 

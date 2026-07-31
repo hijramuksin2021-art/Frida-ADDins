@@ -5,10 +5,14 @@
 (function () {
   document.addEventListener("DOMContentLoaded", () => {
     const guidelineSelect = document.getElementById("guidelineSelect");
+    const btnUpload = document.getElementById("btnUploadGuideline");
+    const btnDelete = document.getElementById("btnDeleteGuideline");
     if (!guidelineSelect) return;
 
     loadGuidelines();
     guidelineSelect.addEventListener("change", saveActiveGuideline);
+    if (btnUpload) btnUpload.addEventListener("click", handleUpload);
+    if (btnDelete) btnDelete.addEventListener("click", handleDelete);
   });
 
   async function loadGuidelines() {
@@ -21,10 +25,11 @@
       if (!guidelineSelect) return;
 
       // Populate options
+      guidelineSelect.innerHTML = '<option value="">-- Tidak ada / Generik --</option>';
       guidelines.forEach(gl => {
         const opt = document.createElement("option");
         opt.value = gl.id;
-        opt.textContent = gl.nama || gl.id;
+        opt.textContent = (gl.nama || gl.id) + (gl.type ? ` (${gl.type})` : "");
         guidelineSelect.appendChild(opt);
       });
 
@@ -74,6 +79,71 @@
       }
     } catch (err) {
       if (activeDesc) activeDesc.innerHTML = `<span style="color:red;">Gagal menyimpan.</span>`;
+    }
+  }
+
+  async function handleUpload() {
+    const fileInput = document.getElementById("guidelineFileInput");
+    const activeDesc = document.getElementById("activeGuidelineDesc");
+    if (!fileInput.files || fileInput.files.length === 0) {
+      alert("Pilih file JSON terlebih dahulu!");
+      return;
+    }
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+      try {
+        const jsonContent = JSON.parse(e.target.result);
+        activeDesc.innerHTML = "<em>Mengunggah...</em>";
+        
+        const resp = await fetch("/api/guidelines/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(jsonContent)
+        });
+        
+        const data = await resp.json();
+        if (resp.ok) {
+          activeDesc.innerHTML = `<span style="color:green;">Berhasil mengunggah pedoman!</span>`;
+          fileInput.value = "";
+          await loadGuidelines();
+        } else {
+          activeDesc.innerHTML = `<span style="color:red;">Gagal: ${escapeHtml(data.error)}</span>`;
+        }
+      } catch (err) {
+        activeDesc.innerHTML = `<span style="color:red;">File JSON tidak valid.</span>`;
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleDelete() {
+    const guidelineSelect = document.getElementById("guidelineSelect");
+    const activeDesc = document.getElementById("activeGuidelineDesc");
+    const id = guidelineSelect.value;
+    
+    if (!id) {
+      alert("Pilih pedoman yang ingin dihapus terlebih dahulu.");
+      return;
+    }
+    if (!confirm(`Yakin ingin menghapus pedoman '${id}'?`)) return;
+
+    activeDesc.innerHTML = "<em>Menghapus...</em>";
+    try {
+      const resp = await fetch(`/api/guidelines/${id}`, {
+        method: "DELETE"
+      });
+      const data = await resp.json();
+      
+      if (resp.ok) {
+        activeDesc.innerHTML = `<span style="color:green;">Berhasil dihapus.</span>`;
+        await loadGuidelines();
+      } else {
+        activeDesc.innerHTML = `<span style="color:red;">Gagal: ${escapeHtml(data.error)}</span>`;
+      }
+    } catch (err) {
+      activeDesc.innerHTML = `<span style="color:red;">Gagal menghapus.</span>`;
     }
   }
 

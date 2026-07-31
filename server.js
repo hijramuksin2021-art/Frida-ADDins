@@ -66,6 +66,7 @@ const cite = require("./rag/cite");
 const providerConfig = require("./rag/providerConfig");
 const aiProvider = require("./rag/aiProvider");
 const guidelineConfig = require("./rag/guidelineConfig");
+const { validateGuideline } = require("./guidelineSchema");
 const { detectGuidelineFromMessage } = require("./rag/guideline-fuzzy");
 guidelineConfig.init();
 
@@ -544,8 +545,9 @@ function handleGuideline(req, res) {
 
   // GET /api/guidelines -> daftar semua guideline yang tersedia
   if (req.method === "GET" && url === "/api/guidelines") {
-    const dir = path.join(__dirname, "rag", "guidelines");
+    const dir = path.join(__dirname, "guidelines");
     try {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const files = fs.readdirSync(dir).filter(f => f.endsWith(".json"));
       const list = files.map(f => {
         try {
@@ -556,7 +558,7 @@ function handleGuideline(req, res) {
             fakultas: content.fakultas,
             universitas: content.universitas,
             tahun_terbit: content.tahun_terbit,
-            jenis_dokumen_didukung: content.jenis_dokumen_didukung,
+            type: content.type
           };
         } catch (_) { return null; }
       }).filter(Boolean);
@@ -569,12 +571,35 @@ function handleGuideline(req, res) {
   // GET /api/guidelines/:id -> detail lengkap satu guideline
   if (req.method === "GET" && /^\/api\/guidelines\/[\w-]+$/.test(url)) {
     const id = url.split("/").pop();
-    const dir = path.join(__dirname, "rag", "guidelines");
+    const dir = path.join(__dirname, "guidelines");
     try {
       const p = path.join(dir, id + ".json");
       if (!fs.existsSync(p)) return sendJson(res, 404, { error: "Guideline tidak ditemukan" });
       const content = JSON.parse(fs.readFileSync(p, "utf8"));
       return sendJson(res, 200, content);
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err.message || err) });
+    }
+  }
+
+  // DELETE /api/guidelines/:id -> hapus guideline
+  if (req.method === "DELETE" && /^\/api\/guidelines\/[\w-]+$/.test(url)) {
+    const id = url.split("/").pop();
+    if (id === "unkhair-pertanian-2021") {
+      return sendJson(res, 403, { error: "Guideline default tidak boleh dihapus." });
+    }
+    const dir = path.join(__dirname, "guidelines");
+    try {
+      const p = path.join(dir, id + ".json");
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        // Jika yang aktif dihapus, reset ke default/kosong
+        if (guidelineConfig.getActiveId() === id) {
+          guidelineConfig.setActiveId("");
+        }
+        return sendJson(res, 200, { ok: true });
+      }
+      return sendJson(res, 404, { error: "Guideline tidak ditemukan" });
     } catch (err) {
       return sendJson(res, 500, { error: String(err.message || err) });
     }
@@ -588,6 +613,22 @@ function handleGuideline(req, res) {
       if (req.method === "POST" && url === "/api/guideline") {
         const st = guidelineConfig.setActiveId(b.id);
         return sendJson(res, 200, { ok: true, status: st });
+      }
+      
+      // POST /api/guidelines/upload -> validasi & simpan JSON guideline baru
+      if (req.method === "POST" && url === "/api/guidelines/upload") {
+        const validation = validateGuideline(b);
+        if (!validation.valid) {
+          return sendJson(res, 400, { error: "Format JSON tidak valid: " + validation.errors.join(", ") });
+        }
+        
+        const dir = path.join(__dirname, "guidelines");
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        
+        const dest = path.join(dir, b.id + ".json");
+        fs.writeFileSync(dest, JSON.stringify(b, null, 2));
+        
+        return sendJson(res, 200, { ok: true, id: b.id });
       }
       return sendJson(res, 404, { error: "rute guideline tidak dikenal" });
     } catch (err) {
