@@ -315,11 +315,8 @@ const AGENT_SYSTEM_PROMPT_BASE = [
   "- Aturan sapaan ini HANYA berlaku untuk pesan basa-basi/sapaan (halo, hai, dll). Jika pesan pertama langsung berisi instruksi editing/formatting dokumen, LANGSUNG kerjakan tanpa basa-basi identitas.",
 ].join("\n");
 
-function getAgentSystemPrompt(contextMemory) {
+function getAgentSystemPrompt() {
   let prompt = AGENT_SYSTEM_PROMPT_BASE;
-  if (contextMemory) {
-    prompt += "\n\nPREFERENSI PENGGUNA (Ingatan Konteks):\n" + contextMemory + "\n";
-  }
   const gl = guidelineConfig.getActiveGuideline();
   if (gl) {
     prompt += "\n\nPANDUAN PENULISAN AKTIF: " + gl.nama + "\n";
@@ -349,10 +346,10 @@ function getAgentSystemPrompt(contextMemory) {
   return prompt;
 }
 
-async function callAgentOnce(messages, contextMemory) {
+async function callAgentOnce(messages) {
   // Adapter multi-provider: tahan Anthropic/OpenAI/Gemini/Custom, translate ke format seragam.
   const data = await aiProvider.callMessages({
-    system: getAgentSystemPrompt(contextMemory),
+    system: getAgentSystemPrompt(),
     tools: API_TOOLS,
     tool_choice: { type: "auto" },
     messages,
@@ -363,12 +360,12 @@ async function callAgentOnce(messages, contextMemory) {
   };
 }
 
-async function callAgent(messages, contextMemory) {
+async function callAgent(messages) {
   const maxTries = 3;
   let lastErr;
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     try {
-      return await callAgentOnce(messages, contextMemory);
+      return await callAgentOnce(messages);
     } catch (err) {
       lastErr = err;
       console.warn("Agent percobaan " + attempt + "/" + maxTries + " gagal: " + (err.message || err));
@@ -392,9 +389,9 @@ async function runServerTool(tu) {
 // Loop agentic di SERVER: tool server (RAG) dieksekusi di sini; saat model
 // memanggil tool client (Word), kembalikan ke task pane untuk Word.run.
 const AGENT_MAX_STEPS = 40;
-async function runAgentServerLoop(messages, contextMemory) {
+async function runAgentServerLoop(messages) {
   for (let step = 0; step < AGENT_MAX_STEPS; step++) {
-    const data = await callAgent(messages, contextMemory);
+    const data = await callAgent(messages);
     messages.push({ role: "assistant", content: data.content });
 
     const toolUses = (data.content || []).filter((b) => b.type === "tool_use");
@@ -426,7 +423,6 @@ function handleAgent(req, res) {
     try {
       const parsedBody = JSON.parse(body || "{}");
       const messages = parsedBody.messages;
-      const contextMemory = parsedBody.contextMemory;
       if (!Array.isArray(messages) || messages.length === 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "messages[] wajib diisi" }));
@@ -450,7 +446,7 @@ function handleAgent(req, res) {
         }
       }
 
-      const result = await runAgentServerLoop(messages, contextMemory);
+      const result = await runAgentServerLoop(messages);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
     } catch (err) {

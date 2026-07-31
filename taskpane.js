@@ -78,9 +78,6 @@ Office.onReady((info) => {
   // [FITUR 4] Refresh stats
   var statsRefBtn = document.getElementById("statsRefresh");
   if (statsRefBtn) statsRefBtn.onclick = updateDocStats;
-
-  // [FITUR 5] Context memory — load dari localStorage
-  initContextMemory();
 });
 
 // ---------- UI helpers ----------
@@ -190,14 +187,10 @@ function isClientTool(name) {
 async function runAgentLoop() {
   for (let step = 0; step < MAX_STEPS; step++) {
     setStatus("FRIDA berpikir… (langkah " + (step + 1) + ")");
-    // [FITUR 5] Sertakan context memory jika ada
-    var cm = getContextMemory();
-    var agentBody = { messages: messages };
-    if (cm) agentBody.contextMemory = cm;
     const resp = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(agentBody),
+      body: JSON.stringify({ messages }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
@@ -620,38 +613,3 @@ function updateDocStats() {
   } catch (_) { /* Word.run tidak tersedia */ }
 }
 
-// =====================================================================
-// FITUR 5: CONTEXT MEMORY (INGATAN KONTEKS)
-// =====================================================================
-const CONTEXT_MEMORY_KEY = "frida_context_memory";
-
-function initContextMemory() {
-  var textarea = document.getElementById("contextMemory");
-  var saveBtn = document.getElementById("contextSave");
-  var statusEl = document.getElementById("contextSaveStatus");
-  if (!textarea || !saveBtn) return;
-
-  // Load dari localStorage
-  var saved = localStorage.getItem(CONTEXT_MEMORY_KEY);
-  if (saved) textarea.value = saved;
-
-  // Simpan
-  saveBtn.onclick = function () {
-    var val = textarea.value.trim();
-    if (val) {
-      localStorage.setItem(CONTEXT_MEMORY_KEY, val);
-    } else {
-      localStorage.removeItem(CONTEXT_MEMORY_KEY);
-    }
-    if (statusEl) {
-      statusEl.textContent = "✓ Ingatan disimpan!";
-      setTimeout(function () { statusEl.textContent = ""; }, 2500);
-    }
-  };
-}
-
-function getContextMemory() {
-  try {
-    return localStorage.getItem(CONTEXT_MEMORY_KEY) || "";
-  } catch (_) { return ""; }
-}
