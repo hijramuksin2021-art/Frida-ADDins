@@ -19,9 +19,43 @@ const ragAgentTools = require("./rag/agent_tools");
 
 // Tools yang DIKIRIM ke provider hanya boleh punya {name, description, input_schema}.
 // Field internal (mis. `runtime`) ditolak Anthropic ("Extra inputs are not permitted").
-const API_TOOLS = TOOL_SCHEMAS.map((t) => ({
-  name: t.name, description: t.description, input_schema: t.input_schema,
-}));
+//
+// PERAMPINGAN PAYLOAD (kompatibilitas gateway yang tersedak request besar):
+//  - slimSchema(): selalu buang field non-esensial bagi API (mis. `default`).
+//  - Mode ramping opt-in (FRIDA_SLIM_TOOLS=1): kirim hanya subset tool inti + buang
+//    deskripsi field internal di skema, sehingga payload jauh lebih kecil.
+//    Set di env untuk mencoba pada gateway yang menolak request agentik besar.
+const SLIM_TOOLS = process.env.FRIDA_SLIM_TOOLS === "1";
+
+// Tool inti untuk mode ramping: editing/teks/format yang paling sering dipakai.
+// Fitur lanjutan (TOC, cover, sitasi, RAG) dinonaktifkan di mode ini demi payload kecil.
+const CORE_TOOL_NAMES = new Set([
+  "get_document_outline", "format_text", "replace_text", "format_paragraph",
+  "apply_style", "insert_paragraph", "insert_break", "format_list",
+  "create_table", "format_table", "set_page_layout",
+]);
+
+// Salin skema tanpa field yang tak wajib bagi API. Di mode ramping, buang juga
+// `description` pada properti bertingkat (deskripsi tool tingkat atas tetap dipertahankan).
+function slimSchema(schema, deep) {
+  if (Array.isArray(schema)) return schema.map((x) => slimSchema(x, deep));
+  if (!schema || typeof schema !== "object") return schema;
+  const out = {};
+  for (const k of Object.keys(schema)) {
+    if (k === "default") continue;                 // API tak butuh; model tetap infer
+    if (deep && k === "description") continue;      // mode ramping: buang desc bertingkat
+    out[k] = slimSchema(schema[k], deep);
+  }
+  return out;
+}
+
+const API_TOOLS = TOOL_SCHEMAS
+  .filter((t) => !SLIM_TOOLS || CORE_TOOL_NAMES.has(t.name))
+  .map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: slimSchema(t.input_schema, SLIM_TOOLS),
+  }));
 
 // Research Copilot / RAG (R0) — ingestion sumber + status embeddings provider.
 const ingest = require("./rag/ingest");
@@ -265,6 +299,20 @@ const AGENT_SYSTEM_PROMPT_BASE = [
   "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",
   "Jangan mengubah bagian yang tidak diminta. Pertahankan bahasa dokumen.",
   "Jika instruksi ambigu atau berisiko (mis. mengganti di seluruh dokumen), tetap usulkan tool call yang paling masuk akal; konfirmasi keamanan ditangani oleh aplikasi klien.",
+  "",
+  "IDENTITAS & SAPAAN FRIDA:",
+  "Anda adalah FRIDA, asisten AI pribadi milik Iza (Hijra Muksin). Aturan sapaan:",
+  "- Jika pesan pertama pengguna mengandung 'Frida..' (huruf F besar/kecil, diikuti dua titik '..'), itu PASTI Iza (pemilik). Balas dengan sapaan hangat dan akrab, contoh: 'Halo Iza! Ada yang Frida bantu?' — langsung tawarkan bantuan tanpa perlu tanya nama.",
+  "- Jika pesan pertama TIDAK mengandung 'Frida..', itu BUKAN Iza. Balas: 'Halo! Saya Frida, asisten AI Iza. Sepertinya saya terinstall bukan di laptop Iza nih 😊 Boleh saya tahu siapa nama kamu? Siapa tau teman dekat Iza!'",
+  "- Jika pengguna menyebutkan namanya dan nama tersebut cocok (case-insensitive) dengan salah satu teman dekat Iza berikut: Antar, Sulis, Fauji (Oji), Rafil (Ilos), Lily, Kardila (Kardi), Adyt, Ikbar (Barex), Baya — maka sapa mereka dengan nama mereka, katakan bahwa mereka teman dekat Iza/Hijra, lalu langsung tawarkan bantuan dengan menampilkan kemampuan FRIDA:",
+  "  'Halo [nama]! Kamu teman dekatnya Iza ya 😄 Senang bertemu! Frida bisa bantu kamu untuk:",
+  "  • Memformat dokumen (merapikan proposal, heading, tata letak)",
+  "  • Mengelola konten (paragraf, tabel, daftar isi)",
+  "  • Mengelola referensi (cari di sumber, ringkas jurnal, sitasi)",
+  "  • Menyusun elemen dokumen (cover, nomor halaman, header/footer)",
+  "  Silakan kasih instruksi ya!'",
+  "- Jika nama pengguna TIDAK cocok dengan daftar teman di atas, tetap ramah, sapa dengan namanya, dan tawarkan bantuan seperti biasa.",
+  "- Aturan sapaan ini HANYA berlaku untuk pesan basa-basi/sapaan (halo, hai, dll). Jika pesan pertama langsung berisi instruksi editing/formatting dokumen, LANGSUNG kerjakan tanpa basa-basi identitas.",
 ].join("\n");
 
 function getAgentSystemPrompt() {
