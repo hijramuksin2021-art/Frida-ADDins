@@ -553,7 +553,7 @@ function initDarkMode() {
 // FITUR 3: TEMPLATE PERINTAH CEPAT (QUICK PROMPTS)
 // =====================================================================
 var QUICK_TEMPLATES = [
-  { label: "🧐 Analisis Dokumen", text: "Tolong baca struktur dokumen ini. Berikan analisis dan kritik bertindak sebagai dosen pembimbing mengenai: 1. Alur logika antar bagian. 2. Tanda bahaya/saran perbaikan. 3. Konsistensi gaya bahasa akademik." },
+  { label: "🧐 Analisis Dokumen", text: "Tolong baca struktur dokumen ini. (Penting: Panggil tool get_document_outline dengan include_text: true agar Anda bisa membaca isi lengkap dokumen sebelum menganalisis!). Berikan analisis dan kritik bertindak sebagai dosen pembimbing mengenai: 1. Alur logika antar bagian. 2. Tanda bahaya/saran perbaikan. 3. Konsistensi gaya bahasa akademik." },
   { label: "📝 Format Skripsi", text: "Format seluruh dokumen ini sesuai panduan penulisan yang aktif (heading, font, spasi, margin)." },
   { label: "✏️ Perbaiki Ejaan", text: "Perbaiki semua typo, ejaan, dan tata bahasa di seluruh dokumen. Pertahankan makna asli." },
   { label: "📊 Buat Tabel", text: "Buatkan tabel yang relevan berdasarkan konteks dokumen ini." },
@@ -620,6 +620,8 @@ function updateDocStats() {
 // =====================================================================
 // FASE 2: AKSI BERBASIS TEKS TERPILIH (CONTEXT-AWARE SELECTION)
 // =====================================================================
+var currentSelectionText = "";
+
 function initSelectionContext() {
   try {
     Office.context.document.addHandlerAsync(
@@ -637,6 +639,12 @@ function initSelectionContext() {
       if (running) return;
       var prompt = btn.getAttribute("data-action");
       if (!prompt) return;
+      
+      // Sisipkan teks yang sedang diblok agar LLM tahu konteksnya
+      if (currentSelectionText) {
+        prompt += "\n\nTeks yang saya maksud:\n\"\"\"\n" + currentSelectionText + "\n\"\"\"";
+      }
+
       var input = document.getElementById("instruction");
       input.value = prompt;
       onSend(); // Langsung kirim
@@ -658,10 +666,12 @@ function onSelectionChanged() {
 
         if (text.length > 5) {
           // Tampilkan panel
+          currentSelectionText = text;
           preview.textContent = '"' + text + '"';
           panel.classList.remove("hidden");
         } else {
           // Sembunyikan panel
+          currentSelectionText = "";
           panel.classList.add("hidden");
         }
       });
