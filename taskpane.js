@@ -58,6 +58,29 @@ Office.onReady((info) => {
       document.getElementById("tab-" + target).classList.add("active");
     });
   });
+
+  // [FITUR 1] Restore riwayat chat dari localStorage
+  restoreChat();
+
+  // [FITUR 2] Dark mode: load preferensi
+  initDarkMode();
+
+  // [FITUR 3] Template perintah cepat
+  initQuickPrompts();
+
+  // [FITUR 4] Statistik dokumen — load awal
+  updateDocStats();
+
+  // [FITUR 1] Tombol bersihkan chat
+  var clearBtn = document.getElementById("clearChat");
+  if (clearBtn) clearBtn.onclick = clearChat;
+
+  // [FITUR 4] Refresh stats
+  var statsRefBtn = document.getElementById("statsRefresh");
+  if (statsRefBtn) statsRefBtn.onclick = updateDocStats;
+
+  // [FITUR 5] Context memory — load dari localStorage
+  initContextMemory();
 });
 
 // ---------- UI helpers ----------
@@ -149,6 +172,10 @@ async function onSend() {
     var auditBox = document.getElementById("audit");
     if (auditBox) auditBox.innerHTML = "";
     if (audit && audit.entries) audit.entries = [];
+    // [FITUR 1] Simpan riwayat chat
+    saveChat();
+    // [FITUR 4] Refresh statistik dokumen setelah edit
+    updateDocStats();
   }
 }
 
@@ -163,10 +190,14 @@ function isClientTool(name) {
 async function runAgentLoop() {
   for (let step = 0; step < MAX_STEPS; step++) {
     setStatus("FRIDA berpikir… (langkah " + (step + 1) + ")");
+    // [FITUR 5] Sertakan context memory jika ada
+    var cm = getContextMemory();
+    var agentBody = { messages: messages };
+    if (cm) agentBody.contextMemory = cm;
     const resp = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify(agentBody),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
@@ -450,4 +481,177 @@ function summarizeOut(out) {
   if (out.applied != null) return "(" + out.applied + " range)";
   if (out.paragraphs != null) return "(" + out.paragraphs.length + " paragraf)";
   return "";
+}
+
+// =====================================================================
+// FITUR 1: RIWAYAT CHAT PERSISTEN
+// =====================================================================
+const CHAT_STORAGE_KEY = "frida_chat_history";
+const CHAT_MAX_MESSAGES = 50;
+
+function saveChat() {
+  try {
+    // Simpan messages (untuk LLM) + HTML visual (untuk tampilan)
+    var trimmed = messages.slice(-CHAT_MAX_MESSAGES);
+    var chatHtml = logEl().innerHTML;
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
+      messages: trimmed,
+      html: chatHtml,
+      ts: Date.now(),
+    }));
+  } catch (_) { /* localStorage penuh / tak tersedia — abaikan */ }
+}
+
+function restoreChat() {
+  try {
+    var raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return;
+    var data = JSON.parse(raw);
+    if (data.messages && data.messages.length) {
+      messages = data.messages;
+    }
+    if (data.html) {
+      logEl().innerHTML = data.html;
+      scrollDown();
+    }
+  } catch (_) { /* data rusak — mulai bersih */ }
+}
+
+function clearChat() {
+  if (running) return;
+  messages = [];
+  logEl().innerHTML = "";
+  localStorage.removeItem(CHAT_STORAGE_KEY);
+  lastSnapshot = null;
+  showUndo(false);
+  setStatus("");
+}
+
+// =====================================================================
+// FITUR 2: DARK MODE
+// =====================================================================
+const DARK_MODE_KEY = "frida_dark_mode";
+
+function initDarkMode() {
+  var toggle = document.getElementById("darkModeToggle");
+  if (!toggle) return;
+  // Load preferensi
+  var saved = localStorage.getItem(DARK_MODE_KEY);
+  if (saved === "true") {
+    document.body.setAttribute("data-theme", "dark");
+    toggle.checked = true;
+  }
+  // Toggle event
+  toggle.addEventListener("change", function () {
+    if (toggle.checked) {
+      document.body.setAttribute("data-theme", "dark");
+      localStorage.setItem(DARK_MODE_KEY, "true");
+    } else {
+      document.body.removeAttribute("data-theme");
+      localStorage.setItem(DARK_MODE_KEY, "false");
+    }
+  });
+}
+
+// =====================================================================
+// FITUR 3: TEMPLATE PERINTAH CEPAT (QUICK PROMPTS)
+// =====================================================================
+var QUICK_TEMPLATES = [
+  { label: "📝 Format Skripsi", text: "Format seluruh dokumen ini sesuai panduan penulisan yang aktif (heading, font, spasi, margin)." },
+  { label: "✏️ Perbaiki Ejaan", text: "Perbaiki semua typo, ejaan, dan tata bahasa di seluruh dokumen. Pertahankan makna asli." },
+  { label: "📊 Buat Tabel", text: "Buatkan tabel yang relevan berdasarkan konteks dokumen ini." },
+  { label: "📖 Daftar Pustaka", text: "Buatkan daftar pustaka / bibliography dari semua sumber yang telah diunggah." },
+  { label: "📄 Cover Page", text: "Buatkan halaman sampul / cover page untuk dokumen ini." },
+  { label: "🔢 Nomor Halaman", text: "Tambahkan nomor halaman di bagian bawah tengah." },
+  { label: "📑 Daftar Isi", text: "Buatkan daftar isi berdasarkan struktur heading dokumen." },
+];
+
+function initQuickPrompts() {
+  var container = document.getElementById("quickPrompts");
+  if (!container) return;
+  QUICK_TEMPLATES.forEach(function (tpl) {
+    var btn = document.createElement("button");
+    btn.className = "qp-btn";
+    btn.textContent = tpl.label;
+    btn.title = tpl.text;
+    btn.onclick = function () {
+      if (running) return;
+      var input = document.getElementById("instruction");
+      input.value = tpl.text;
+      input.focus();
+    };
+    container.appendChild(btn);
+  });
+}
+
+// =====================================================================
+// FITUR 4: STATISTIK DOKUMEN
+// =====================================================================
+function updateDocStats() {
+  try {
+    Word.run(function (context) {
+      var body = context.document.body;
+      body.load("text");
+      var paragraphs = body.paragraphs;
+      paragraphs.load("items");
+      return context.sync().then(function () {
+        var text = body.text || "";
+        var words = text.trim().split(/\s+/).filter(function (w) { return w.length > 0; });
+        var chars = text.replace(/\s/g, "").length;
+        var paraCount = paragraphs.items.length;
+        // Estimasi waktu baca (200 kata/menit rata-rata)
+        var readMins = Math.max(1, Math.round(words.length / 200));
+        var readText = readMins < 60
+          ? readMins + " mnt baca"
+          : Math.floor(readMins / 60) + " jam " + (readMins % 60) + " mnt";
+
+        var elWords = document.getElementById("statWords");
+        var elPara = document.getElementById("statParagraphs");
+        var elChars = document.getElementById("statChars");
+        var elRead = document.getElementById("statReadTime");
+        if (elWords) elWords.textContent = words.length.toLocaleString("id-ID");
+        if (elPara) elPara.textContent = paraCount.toLocaleString("id-ID");
+        if (elChars) elChars.textContent = chars.toLocaleString("id-ID");
+        if (elRead) elRead.textContent = readText;
+      });
+    }).catch(function () {
+      // Gagal baca dokumen — abaikan (mungkin tidak ada dokumen terbuka)
+    });
+  } catch (_) { /* Word.run tidak tersedia */ }
+}
+
+// =====================================================================
+// FITUR 5: CONTEXT MEMORY (INGATAN KONTEKS)
+// =====================================================================
+const CONTEXT_MEMORY_KEY = "frida_context_memory";
+
+function initContextMemory() {
+  var textarea = document.getElementById("contextMemory");
+  var saveBtn = document.getElementById("contextSave");
+  var statusEl = document.getElementById("contextSaveStatus");
+  if (!textarea || !saveBtn) return;
+
+  // Load dari localStorage
+  var saved = localStorage.getItem(CONTEXT_MEMORY_KEY);
+  if (saved) textarea.value = saved;
+
+  // Simpan
+  saveBtn.onclick = function () {
+    var val = textarea.value.trim();
+    if (val) {
+      localStorage.setItem(CONTEXT_MEMORY_KEY, val);
+    } else {
+      localStorage.removeItem(CONTEXT_MEMORY_KEY);
+    }
+    if (statusEl) {
+      statusEl.textContent = "✓ Ingatan disimpan!";
+      setTimeout(function () { statusEl.textContent = ""; }, 2500);
+    }
+  };
+}
+
+function getContextMemory() {
+  try {
+    return localStorage.getItem(CONTEXT_MEMORY_KEY) || "";
+  } catch (_) { return ""; }
 }

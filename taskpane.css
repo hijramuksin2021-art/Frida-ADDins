@@ -607,3 +607,218 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* --- Smooth Theme Transition --- */
+body, .app-header, .app-nav, .nav-tab, .composer, .composer-input,
+.chat-log, .msg, .status, .settings-card, .src-drop, .src-item,
+.tool, .provider-form input, .provider-form select, .ef {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* ============================================
+   DARK MODE
+   ============================================ */
+body[data-theme="dark"] {
+  --primary: #e87040;
+  --primary-hover: #f08050;
+  --primary-light: rgba(232, 112, 64, 0.12);
+  --success: #34d399;
+  --success-bg: rgba(52, 211, 153, 0.12);
+  --error: #f87171;
+  --error-bg: rgba(248, 113, 113, 0.12);
+  --warning: #fbbf24;
+  --warning-bg: rgba(251, 191, 36, 0.12);
+  --text-main: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --text-light: #71717a;
+  --bg-body: #0f0f14;
+  --bg-card: #1a1a24;
+  --bg-chat: #12121a;
+  --bg-user-bubble: #c2410c;
+  --bg-ai-bubble: #1e1e2a;
+  --border: #2e2e3a;
+  --border-focus: #e87040;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+}
+body[data-theme="dark"] .composer-input { background: #1e1e2a; }
+body[data-theme="dark"] .composer textarea { color: var(--text-main); }
+body[data-theme="dark"] .send-btn:disabled { background: #444; }
+body[data-theme="dark"] .src-drop { border-color: #3a3a4a; color: #888; }
+body[data-theme="dark"] .src-drop:hover,
+body[data-theme="dark"] .src-drop.over { border-color: var(--primary); }
+body[data-theme="dark"] .src-drop small { color: var(--text-light); }
+body[data-theme="dark"] .provider-form input,
+body[data-theme="dark"] .provider-form select {
+  background: #12121a; color: var(--text-main);
+}
+body[data-theme="dark"] .ef { background: #12121a; }
+body[data-theme="dark"] .ef-i { background: #1a1a24; color: var(--text-main); }
+body[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3a3a4a; }
+body[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+body[data-theme="dark"] .msg.error { border-color: rgba(248,113,113,0.3); }
+body[data-theme="dark"] .undo { background: #1a1a24; }
+
+/* --- Dark Mode Toggle Switch --- */
+.dark-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+.dark-mode-row span { font-size: 12px; font-weight: 600; color: var(--text-main); }
+.toggle-switch {
+  position: relative;
+  width: 42px; height: 22px;
+  cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: #d1d5db;
+  border-radius: 22px;
+  transition: background 0.3s;
+}
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  left: 3px; bottom: 3px;
+  width: 16px; height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* --- Stats Bar --- */
+.stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.stats-bar.hidden { display: none; }
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.stat-item .stat-val {
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 12px;
+}
+.stat-item .stat-icon { font-size: 12px; }
+.stats-toggle {
+  margin-left: auto;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-light);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.stats-toggle:hover { background: var(--primary-light); color: var(--primary); }
+
+/* --- Quick Prompts --- */
+.quick-prompts {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  scrollbar-width: none;          /* Firefox */
+}
+.quick-prompts::-webkit-scrollbar { display: none; }  /* Chrome */
+.qp-btn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.qp-btn:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* --- Clear Chat Button --- */
+.clear-chat-btn {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-light);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+.clear-chat-btn:hover { background: var(--error-bg); color: var(--error); }
+.clear-chat-btn:active { transform: scale(0.92); }
+
+/* --- Context Memory (Settings) --- */
+.context-memory-area {
+  width: 100%;
+  min-height: 80px;
+  max-height: 160px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+.context-memory-area:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(194, 65, 12, 0.1);
+}
+.context-memory-hint {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.context-save-btn {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--primary);
+  color: #fff;
+  transition: background 0.2s;
+  margin-top: 8px;
+}
+.context-save-btn:hover { background: var(--primary-hover); }
+.context-save-status {
+  font-size: 11px;
+  color: var(--success);
+  min-height: 16px;
+  margin-top: 4px;
+}

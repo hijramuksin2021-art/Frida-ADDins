@@ -15,6 +15,15 @@
     </div>
   </header>
 
+  <!-- STATS BAR -->
+  <div id="statsBar" class="stats-bar">
+    <div class="stat-item"><span class="stat-icon">📝</span> <span id="statWords" class="stat-val">—</span> kata</div>
+    <div class="stat-item"><span class="stat-icon">📄</span> <span id="statParagraphs" class="stat-val">—</span> paragraf</div>
+    <div class="stat-item"><span class="stat-icon">🔤</span> <span id="statChars" class="stat-val">—</span> karakter</div>
+    <div class="stat-item"><span class="stat-icon">⏱️</span> <span id="statReadTime" class="stat-val">—</span></div>
+    <button id="statsRefresh" class="stats-toggle" title="Refresh statistik">🔄</button>
+  </div>
+
   <nav class="app-nav">
     <button class="nav-tab active" data-tab="chat">💬 Chat</button>
     <button class="nav-tab" data-tab="sources">📚 Referensi</button>
@@ -28,9 +37,12 @@
       <div id="status" class="status"></div>
       <button id="undo" class="undo" style="display:none">↩️ Undo perubahan terakhir</button>
       <div id="audit" class="audit"></div>
+      <!-- QUICK PROMPTS -->
+      <div id="quickPrompts" class="quick-prompts"></div>
       <div class="composer">
         <div class="composer-input">
           <textarea id="instruction" rows="1" placeholder="Tulis perintah untuk FRIDA…"></textarea>
+          <button id="clearChat" class="clear-chat-btn" title="Bersihkan chat">🗑️</button>
           <button id="send" class="send-btn" title="Kirim (Enter)">Kirim</button>
         </div>
         <label class="check" title="Tinjau dampak sebelum menerapkan">
@@ -61,6 +73,35 @@
     <div id="tab-settings" class="tab-content">
       <div class="section-header">
         <h2 class="section-title">⚙ Pengaturan</h2>
+      </div>
+
+      <!-- DARK MODE -->
+      <div class="settings-card">
+        <h3 class="settings-card-title">🎨 Tampilan</h3>
+        <div class="dark-mode-row">
+          <span>🌙 Mode Gelap</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="darkModeToggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- CONTEXT MEMORY -->
+      <div class="settings-card">
+        <h3 class="settings-card-title">🧠 Ingatan Konteks</h3>
+        <div class="provider-form">
+          <textarea id="contextMemory" class="context-memory-area" placeholder="Tulis preferensi Anda di sini, contoh:
+- Selalu pakai font Times New Roman 12pt
+- Spasi 1.5
+- Bahasa formal akademik
+- Format APA7 untuk sitasi"></textarea>
+          <div class="context-memory-hint">
+            FRIDA akan mengingat preferensi ini di setiap percakapan. Kosongkan untuk mereset.
+          </div>
+          <button id="contextSave" class="context-save-btn">💾 Simpan Ingatan</button>
+          <div id="contextSaveStatus" class="context-save-status"></div>
+        </div>
       </div>
 
       <!-- GUIDELINE CONFIG -->
