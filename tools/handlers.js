@@ -753,7 +753,14 @@
 
     // 1) style & header bold via API (ini bekerja). Lakukan SEBELUM baca OOXML
     //    agar ikut terbawa saat border ditulis ulang lewat OOXML.
-    if (args.style) { try { table.style = args.style; } catch (e) {} }
+    if (args.borders) {
+      try { table.style = "Table Normal"; } catch (e) {
+        try { table.style = "TableNormal"; } catch (e2) {}
+      }
+    } else if (args.style) {
+      try { table.style = args.style; } catch (e) {}
+    }
+
     if (args.headerBold) { try { table.rows.getFirst().font.bold = true; } catch (e) {} }
     await context.sync();
 
@@ -996,6 +1003,13 @@
       xml = xml.replace(/<w:tblPr\s*\/>/, "<w:tblPr>" + tblBorders + "</w:tblPr>");
     } else {
       xml = xml.replace(/<w:tblPr(\s[^>]*)?>/, (m) => m + tblBorders);
+    }
+
+    // Reset conditional formatting di <w:tblLook> jika ada (menghindari border hantu dari style)
+    if (/<w:tblLook\b[^>]*\/>/.test(xml)) {
+      xml = xml.replace(/<w:tblLook\b[^>]*\/>/, '<w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/>');
+    } else if (/<w:tblLook\b[^>]*>[\s\S]*?<\/w:tblLook>/.test(xml)) {
+      xml = xml.replace(/<w:tblLook\b[^>]*>[\s\S]*?<\/w:tblLook>/, '<w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/>');
     }
 
     if (mode === "academic") {
