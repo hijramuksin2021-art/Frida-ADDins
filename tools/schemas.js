@@ -433,8 +433,8 @@
         tableIndex: { type: "integer", default: 0, description: "Indeks tabel di dokumen (0 = pertama)." },
         borders: {
           type: "string",
-          enum: ["all", "outside", "inside", "none"],
-          description: "all = garis penuh di semua sel (grid); outside = tepi luar saja; inside = garis dalam saja; none = hapus semua garis.",
+          enum: ["all", "outside", "inside", "academic", "none"],
+          description: "all = garis penuh di semua sel (grid); outside = tepi luar saja; inside = garis dalam saja; none = hapus semua garis; academic = gaya tabel jurnal ilmiah / three-line table (hanya garis atas, bawah header, dan bawah tabel, tanpa garis vertikal).",
         },
         borderStyle: {
           type: "string",

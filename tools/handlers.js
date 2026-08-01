@@ -968,12 +968,27 @@
   function applyTblBorders(xml, mode, val, sz, color) {
     const edge = (tag) =>
       '<w:' + tag + ' w:val="' + val + '" w:sz="' + sz + '" w:space="0" w:color="' + color + '"/>';
-    let edges;
-    if (mode === "inside") edges = [edge("insideH"), edge("insideV")];
-    else if (mode === "outside") edges = ["top", "left", "bottom", "right"].map(edge);
-    else edges = ["top", "left", "bottom", "right"].map(edge)
-                  .concat([edge("insideH"), edge("insideV")]); // all & none
-    const tblBorders = "<w:tblBorders>" + edges.join("") + "</w:tblBorders>";
+    const edgeNil = (tag) => '<w:' + tag + ' w:val="nil"/>';
+
+    let tblBorders = "";
+    if (mode === "academic") {
+      const edges = [
+        edge("top"),
+        edge("bottom"),
+        edgeNil("left"),
+        edgeNil("right"),
+        edgeNil("insideH"),
+        edgeNil("insideV")
+      ];
+      tblBorders = "<w:tblBorders>" + edges.join("") + "</w:tblBorders>";
+    } else {
+      let edges;
+      if (mode === "inside") edges = [edge("insideH"), edge("insideV")];
+      else if (mode === "outside") edges = ["top", "left", "bottom", "right"].map(edge);
+      else edges = ["top", "left", "bottom", "right"].map(edge)
+                    .concat([edge("insideH"), edge("insideV")]); // all & none
+      tblBorders = "<w:tblBorders>" + edges.join("") + "</w:tblBorders>";
+    }
 
     // buang tblBorders lama (bila ada), lalu sisipkan setelah <w:tblPr ...>
     xml = xml.replace(/<w:tblBorders>[\s\S]*?<\/w:tblBorders>/, "");
@@ -982,6 +997,61 @@
     } else {
       xml = xml.replace(/<w:tblPr(\s[^>]*)?>/, (m) => m + tblBorders);
     }
+
+    if (mode === "academic") {
+      // Isolasi baris pertama saja
+      const matchTr = xml.match(/<w:tr(\s|>)/);
+      if (matchTr) {
+        const startTr = matchTr.index;
+        const endTrMatch = xml.substring(startTr).match(/<\/w:tr>/);
+        if (endTrMatch) {
+          const endTr = startTr + endTrMatch.index + 7;
+          let firstTr = xml.substring(startTr, endTr);
+          
+          // Proses tiap sel (<w:tc>) di baris pertama
+          firstTr = firstTr.replace(/<w:tc(\s|>)[^>]*>([\s\S]*?)<\/w:tc>/g, (tcFull) => {
+            const startTc = tcFull.indexOf('>') + 1;
+            const tcTag = tcFull.substring(0, startTc);
+            let inner = tcFull.substring(startTc, tcFull.length - 7); // hapus </w:tc>
+            
+            const bottomBorder = edge("bottom");
+            
+            if (!/<w:tcPr(\s|>)/.test(inner)) {
+              // Jika sel belum punya tcPr sama sekali
+              inner = `<w:tcPr><w:tcBorders>${bottomBorder}</w:tcBorders></w:tcPr>` + inner;
+            } else {
+              // Extract tcPr
+              const tcPrStart = inner.match(/<w:tcPr(\s|>)[^>]*>/).index;
+              const tcPrTagStr = inner.match(/<w:tcPr(\s|>)[^>]*>/)[0];
+              const tcPrTagLen = tcPrTagStr.length;
+              
+              // Cari penutup tcPr terdekat dari pembukanya (untuk jaga-jaga kalau strukturnya kompleks)
+              const tcPrEnd = inner.indexOf('</w:tcPr>', tcPrStart) + 9;
+              let tcPrInner = inner.substring(tcPrStart + tcPrTagLen, tcPrEnd - 9);
+              
+              if (/<w:tcBorders(\s|>)/.test(tcPrInner)) {
+                // Ada tcBorders lama, hapus bottom lama dan timpa
+                tcPrInner = tcPrInner.replace(/<w:tcBorders\b[^>]*>([\s\S]*?)<\/w:tcBorders>/, (mBorders, innerBorders) => {
+                  let newBorders = innerBorders.replace(/<w:bottom\b[^>]*\/>/g, "");
+                  return `<w:tcBorders>${newBorders}${bottomBorder}</w:tcBorders>`;
+                });
+              } else {
+                // Sisipkan di awal tcPr
+                tcPrInner = `<w:tcBorders>${bottomBorder}</w:tcBorders>` + tcPrInner;
+              }
+              
+              // Satukan kembali string sel
+              inner = inner.substring(0, tcPrStart + tcPrTagLen) + tcPrInner + inner.substring(tcPrEnd - 9);
+            }
+            return tcTag + inner + "</w:tc>";
+          });
+
+          // Gabung kembali ke XML utama
+          xml = xml.substring(0, startTr) + firstTr + xml.substring(endTr);
+        }
+      }
+    }
+
     return xml;
   }
 
