@@ -25,6 +25,15 @@ async function search_uploaded_sources(input) {
   try { [qvec] = await embeddings.embed([query]); }
   catch (e) { return { error: "embeddings gagal: " + (e.message || e) }; }
 
+  const unindexedIds = docIds.filter(id => !vectors.hasChunks(id));
+  if (docIds.length > 0 && unindexedIds.length === docIds.length) {
+    return {
+      hits: [],
+      needsReindex: true,
+      note: "Dokumen ditemukan tapi BELUM BERHASIL DIINDEKS (0 chunks tersimpan). Sarankan pengguna klik tombol 'Indeks Ulang' di panel Referensi, JANGAN minta pengguna copy-paste isi dokumen secara manual — coba lagi otomatis setelah pengguna klik indeks ulang."
+    };
+  }
+
   const hits = vectors.search(qvec, docIds, { k: input.k || 6 });
   const titles = {};
   all.forEach((d) => (titles[d.id] = d.title));

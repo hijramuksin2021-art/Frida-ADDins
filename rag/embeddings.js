@@ -51,6 +51,8 @@ function status(env) {
   };
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // embed(texts[]) -> number[][]. Throw bila provider belum siap.
 async function embed(texts, env) {
   const c = readConfig(env);
@@ -65,23 +67,44 @@ async function embed(texts, env) {
     throw new Error("Embeddings remote belum dikonfigurasi. Set EMBED_BASE_URL, EMBED_API_KEY, EMBED_MODEL di .env.");
   }
 
-  const resp = await fetch(c.baseUrl + "/embeddings", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "authorization": "Bearer " + c.apiKey,
-    },
-    body: JSON.stringify({ model: c.model, input }),
-  });
-  const raw = await resp.text();
-  if (!resp.ok) throw new Error("Provider embeddings " + resp.status + ": " + raw.slice(0, 300));
-  const data = JSON.parse(raw);
-  // format OpenAI: { data:[{embedding:[...]}], ... }
-  const vecs = (data.data || []).map((d) => d.embedding);
-  if (!vecs.length || !Array.isArray(vecs[0])) {
-    throw new Error("Respons embeddings tidak dikenal (tak ada data[].embedding).");
+  const maxRetries = 3;
+  let attempt = 0;
+  
+  while (true) {
+    attempt++;
+    try {
+      const resp = await fetch(c.baseUrl + "/embeddings", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": "Bearer " + c.apiKey,
+        },
+        body: JSON.stringify({ model: c.model, input }),
+      });
+      const raw = await resp.text();
+      
+      if (!resp.ok) {
+        if (resp.status === 429 && attempt < maxRetries) {
+          await sleep(Math.pow(2, attempt) * 1000); // 2s, 4s, 8s backoff
+          continue;
+        }
+        throw new Error("Provider embeddings " + resp.status + ": " + raw.slice(0, 300));
+      }
+      
+      const data = JSON.parse(raw);
+      // format OpenAI: { data:[{embedding:[...]}], ... }
+      const vecs = (data.data || []).map((d) => d.embedding);
+      if (!vecs.length || !Array.isArray(vecs[0])) {
+        throw new Error("Respons embeddings tidak dikenal (tak ada data[].embedding).");
+      }
+      return vecs;
+    } catch (e) {
+      if (attempt >= maxRetries || e.message.includes("Embeddings remote belum") || e.message.includes("Provider embeddings")) {
+        throw e; // Jangan retry untuk error autentikasi/validasi
+      }
+      await sleep(Math.pow(2, attempt) * 1000);
+    }
   }
-  return vecs;
 }
 
 function dim(env) { return readConfig(env).dim; }
