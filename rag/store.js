@@ -98,4 +98,21 @@ function remove(id) {
   return true;
 }
 
-module.exports = { save, list, get, remove, findByHash, sha256, updateMetadata, ROOT };
+function updateStatus(id, status, error) {
+  const full = get(id);
+  if (!full) return;
+  full.indexStatus = status;
+  if (error !== undefined) full.indexError = error;
+  fs.writeFileSync(path.join(ROOT, id + ".json"), JSON.stringify(full, null, 2));
+
+  // Sinkron ke index
+  const list0 = readIndex();
+  const i = list0.findIndex((d) => d.id === id);
+  if (i >= 0) {
+    list0[i].indexStatus = status;
+    if (error !== undefined) list0[i].indexError = error;
+    writeIndex(list0);
+  }
+}
+
+module.exports = { save, list, get, remove, findByHash, sha256, updateMetadata, updateStatus, ROOT };

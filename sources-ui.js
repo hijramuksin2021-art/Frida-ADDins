@@ -97,6 +97,8 @@
     refreshList();
   }
 
+  let pollTimer = null;
+
   async function refreshList() {
     const box = document.getElementById("srcList");
     if (!box) return;
@@ -107,18 +109,32 @@
       const countEl = document.getElementById("srcCount");
       if (countEl) countEl.textContent = items.length ? "(" + items.length + ")" : "";
       if (!items.length) { box.innerHTML = '<div class="src-empty">Belum ada sumber. Unggah jurnal/PDF untuk mulai.</div>'; return; }
+      let hasPending = false;
       box.innerHTML = items.map((s) => {
-        const meta = [s.ext.toUpperCase(), s.year || null, s.pages ? s.pages + " hal" : null,
+        let statText = "";
+        if (s.indexStatus === "pending") { statText = '<span style="color:#0078d4">Memproses (mengindeks)...</span>'; hasPending = true; }
+        else if (s.indexStatus === "error") statText = '<span style="color:#d13438">Error: ' + esc(s.indexError || "Gagal mengindeks") + '</span>';
+        else if (s.indexStatus === "done") statText = '<span style="color:#107c10">Siap dipakai</span>';
+
+        const metaData = [s.ext.toUpperCase(), s.year || null, s.pages ? s.pages + " hal" : null,
           Math.round((s.chars || 0) / 1000) + "k char"].filter(Boolean).join(" · ");
+        const meta = esc(metaData) + (statText ? " · " + statText : "");
         const conf = (s.confidence === "low" || s.confidence === "medium")
           ? '<span class="src-warn" title="Metadata tebakan — klik ✎ untuk koreksi sebelum menyitir">metadata?</span>' : "";
         return '<div class="src-item" data-id="' + s.id + '">' +
           '<div class="src-main"><div class="src-title">' + esc(s.title || s.filename) + " " + conf + "</div>" +
-          '<div class="src-meta">' + esc(meta) + "</div></div>" +
+          '<div class="src-meta">' + meta + "</div></div>" +
           '<button class="src-edit" data-id="' + s.id + '" title="Edit metadata sitasi">✎</button>' +
           '<button class="src-del" data-id="' + s.id + '" title="Hapus">✕</button></div>' +
           '<div class="src-edit-form" id="ef-' + s.id + '"></div>';
       }).join("");
+
+      if (hasPending) {
+        if (!pollTimer) pollTimer = setTimeout(refreshList, 3000);
+      } else {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+      }
+
       box.querySelectorAll(".src-del").forEach((b) =>
         (b.onclick = () => removeSource(b.getAttribute("data-id"))));
       box.querySelectorAll(".src-edit").forEach((b) =>

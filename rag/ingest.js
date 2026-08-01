@@ -72,16 +72,21 @@ async function ingestUpload({ filename, mime, dataBase64, workspace }) {
     confidence: meta.confidence, csl: meta.csl,
     pages: parsed.pages, chars: parsed.chars,
     text: parsed.text, workspace: workspace || "default",
+    indexStatus: "pending"
   });
 
-  // Chunk + embed (boleh gagal: dok tetap tersimpan, bisa di-reindex nanti).
-  let indexed = { numChunks: 0 };
-  let indexError = null;
-  try { indexed = await indexDocument(doc.id, parsed.text); }
-  catch (e) { indexError = String(e.message || e); }
+  // Tahap lambat (async) jalankan di background (fire and forget)
+  setImmediate(async () => {
+    try {
+      const indexed = await indexDocument(doc.id, parsed.text);
+      store.updateStatus(doc.id, "done", null);
+      // Optional: re-save full doc if you want to store numChunks, but usually vectors.hasChunks is enough
+    } catch (e) {
+      store.updateStatus(doc.id, "error", String(e.message || e));
+    }
+  });
 
-  return { document: doc, duplicate: false,
-           numChunks: indexed.numChunks, indexError };
+  return { document: doc, duplicate: false, indexStatus: "pending" };
 }
 
 // Reindex dokumen yang belum punya vektor (mis. diunggah sebelum R1).

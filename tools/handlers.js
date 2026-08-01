@@ -865,7 +865,23 @@
         bordersApplied = args.borders;
       }
       if (args.autoFit) {
-        newXml = applyTblAutoFit(newXml);
+        let colMaxChars = null;
+        try {
+          table.load("values");
+          await context.sync();
+          if (table.values) {
+            colMaxChars = [];
+            const values = table.values;
+            for (let r = 0; r < values.length; r++) {
+              for (let c = 0; c < values[r].length; c++) {
+                 colMaxChars[c] = Math.max(colMaxChars[c] || 0, String(values[r][c] || "").trim().length);
+              }
+            }
+          }
+        } catch(e) {
+          console.warn("Could not read table values for autoFit:", e);
+        }
+        newXml = applyTblAutoFit(newXml, colMaxChars);
         autoFitApplied = true;
       }
 
@@ -1081,7 +1097,7 @@
     return tblPrXml.replace(/<\/w:tblPr>/, newChildXml + "</w:tblPr>");
   }
 
-  function applyTblAutoFit(xml) {
+  function applyTblAutoFit(xml, colMaxChars) {
     // 1. insert <w:tblLayout w:type="autofit"/> in <w:tblPr>
     xml = xml.replace(/<w:tblLayout\b[^>]*\/>|<w:tblLayout\b[^>]*>[\s\S]*?<\/w:tblLayout>/, "");
     
@@ -1098,26 +1114,43 @@
       return insertTblPrChild(tblPrXml, '<w:tblLayout w:type="autofit"/>', afterAnchors);
     });
 
-    // 2. reset <w:tcW> inside all <w:tc>
-    xml = xml.replace(/<w:tc(\s|>)[^>]*>([\s\S]*?)<\/w:tc>/g, (tcFull) => {
-      const startTc = tcFull.indexOf('>') + 1;
-      const tcTag = tcFull.substring(0, startTc);
-      let inner = tcFull.substring(startTc, tcFull.length - 7);
+    // 2. reset <w:tcW> inside all <w:tc>, per baris untuk melacak indeks kolom
+    xml = xml.replace(/<w:tr(\s|>)[^>]*>([\s\S]*?)<\/w:tr>/g, (trFull) => {
+      const startTr = trFull.indexOf('>') + 1;
+      const trTag = trFull.substring(0, startTr);
+      let trInner = trFull.substring(startTr, trFull.length - 7);
       
-      const autoW = '<w:tcW w:w="0" w:type="auto"/>';
-      
-      if (!/<w:tcPr(\s|>)/.test(inner)) {
-        inner = "<w:tcPr>" + autoW + "</w:tcPr>" + inner;
-      } else {
-        inner = inner.replace(/<w:tcPr\b[^>]*\/>|<w:tcPr\b[^>]*>([\s\S]*?)<\/w:tcPr>/, (tcPrMatch) => {
-          let tcPrXml = tcPrMatch;
-          if (tcPrXml.endsWith("/>")) tcPrXml = tcPrXml.replace(/\/>$/, "></w:tcPr>");
-          
-          tcPrXml = tcPrXml.replace(/<w:tcW\b[^>]*\/>|<w:tcW\b[^>]*>[\s\S]*?<\/w:tcW>/, "");
-          return tcPrXml.replace(/<w:tcPr(\s[^>]*)?>/, (m) => m + autoW);
-        });
-      }
-      return tcTag + inner + "</w:tc>";
+      let colIdx = 0;
+      const newTrInner = trInner.replace(/<w:tc(\s|>)[^>]*>([\s\S]*?)<\/w:tc>/g, (tcFull) => {
+        const startTc = tcFull.indexOf('>') + 1;
+        const tcTag = tcFull.substring(0, startTc);
+        let inner = tcFull.substring(startTc, tcFull.length - 7);
+        
+        let autoW = '<w:tcW w:w="0" w:type="auto"/>';
+        if (colMaxChars && colMaxChars[colIdx] != null) {
+          const maxLen = colMaxChars[colIdx];
+          if (maxLen > 0 && maxLen <= 5) {
+            // Lebar rata-rata char + padding (150 twips per char + 500 padding)
+            const twips = Math.round(maxLen * 150 + 500);
+            autoW = `<w:tcW w:w="${twips}" w:type="dxa"/>`;
+          }
+        }
+        colIdx++;
+        
+        if (!/<w:tcPr(\s|>)/.test(inner)) {
+          inner = "<w:tcPr>" + autoW + "</w:tcPr>" + inner;
+        } else {
+          inner = inner.replace(/<w:tcPr\b[^>]*\/>|<w:tcPr\b[^>]*>([\s\S]*?)<\/w:tcPr>/, (tcPrMatch) => {
+            let tcPrXml = tcPrMatch;
+            if (tcPrXml.endsWith("/>")) tcPrXml = tcPrXml.replace(/\/>$/, "></w:tcPr>");
+            
+            tcPrXml = tcPrXml.replace(/<w:tcW\b[^>]*\/>|<w:tcW\b[^>]*>[\s\S]*?<\/w:tcW>/, "");
+            return tcPrXml.replace(/<w:tcPr(\s[^>]*)?>/, (m) => m + autoW);
+          });
+        }
+        return tcTag + inner + "</w:tc>";
+      });
+      return trTag + newTrInner + "</w:tr>";
     });
     
     return xml;
