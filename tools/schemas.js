@@ -121,10 +121,9 @@
   const set_page_layout = {
     name: "set_page_layout",
     description:
-      "Atur tata letak halaman dokumen: orientasi (portrait/landscape), ukuran kertas " +
-      "(A4/Letter/Legal), dan/atau margin (preset normal/narrow/moderate/wide, atau angka cm). " +
-      "Gunakan untuk perintah seperti 'ubah ke landscape', 'ganti kertas ke A4', 'perkecil margin'. " +
-      "Hanya set properti yang diminta; yang lain dibiarkan.",
+      "Atur tata letak halaman dokumen: orientasi, ukuran kertas, margin, dan jumlah kolom (multi-column layout). " +
+      "Gunakan untuk perintah seperti 'ubah ke landscape', 'ganti kertas ke A4', 'buat 2 kolom', 'format kolom jurnal'. " +
+      "Hanya set properti yang diminta; yang lain dibiarkan. CATATAN: Pengaturan kolom saat ini berlaku untuk seluruh section.",
     input_schema: {
       type: "object",
       properties: {
@@ -150,6 +149,14 @@
             top: { type: "number" }, bottom: { type: "number" },
             left: { type: "number" }, right: { type: "number" },
           },
+        },
+        columns: {
+          type: "integer",
+          description: "Jumlah kolom halaman (misal 2 untuk format jurnal 2 kolom).",
+        },
+        columnSpacingCm: {
+          type: "number",
+          description: "Jarak antar kolom dalam cm (contoh 0.5 atau 1). Default 0.5 jika kosong namun kolom > 1.",
         },
       },
     },

@@ -121,6 +121,7 @@
       if (args.fontName) f.name = args.fontName;
       if (args.fontSize) f.size = args.fontSize;
       if (args.color) f.color = args.color;
+      else if (args.target && args.target.mode === "heading") { try { f.color = "#000000"; } catch(e){} }
       if (args.highlightColor) f.highlightColor = args.highlightColor;
     });
     await context.sync();
@@ -259,7 +260,12 @@
   // ---- Tool: apply_style (write) ----
   async function apply_style(context, args) {
     const paras = await resolveTargetParagraphs(context, args.target);
-    paras.forEach((p) => { p.style = args.styleName; });
+    paras.forEach((p) => { 
+      p.style = args.styleName; 
+      if (/Heading/i.test(args.styleName)) {
+        try { p.font.color = "#000000"; } catch(e) {}
+      }
+    });
     await context.sync();
     return { applied: paras.length, style: args.styleName };
   }
@@ -664,6 +670,7 @@
     if (args.title) {
       const t = anchor.insertParagraph(args.title, loc);
       t.styleBuiltIn = Word.BuiltInStyleName.heading1;
+      try { t.font.color = "#000000"; } catch(e) {}
     }
     body.insertOoxml(tocOoxml(), loc);
     await context.sync();
@@ -884,7 +891,10 @@
 
     // Isi content control
     const h = cc.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.end);
-    try { h.styleBuiltIn = Word.BuiltInStyleName.heading1; } catch (e) {}
+    try { 
+      h.styleBuiltIn = Word.BuiltInStyleName.heading1; 
+      try { h.font.color = "#000000"; } catch(e) {}
+    } catch (e) {}
 
     entries.forEach((e) => {
       const p = cc.insertParagraph("", Word.InsertLocation.end);
@@ -1158,8 +1168,8 @@
             // Clear dan rebuild bibliography inside CC
             cc.clear();
 
-            const h = cc.insertParagraph("Daftar Pustaka", Word.InsertLocation.start);
-            try { h.styleBuiltIn = Word.BuiltInStyleName.heading1; } catch (e) {}
+            const t = cc.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.start);
+            try { t.styleBuiltIn = Word.BuiltInStyleName.heading1; t.font.color = "#000000"; } catch (e) {}
 
             for (const entry of data.entries) {
               const p = cc.insertParagraph("", Word.InsertLocation.end);
