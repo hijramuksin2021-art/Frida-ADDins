@@ -431,8 +431,9 @@
     name: "format_table",
     description:
       "Ubah TAMPILAN tabel yang SUDAH ADA tanpa membuat ulang: terapkan garis/border (mis. garis " +
-      "penuh/grid ke semua sel), ubah style tabel, dan/atau tebalkan baris header. " +
-      "Gunakan untuk 'buat tabelnya bergaris penuh', 'beri garis di semua sel', 'kasih grid ke tabel'. " +
+      "penuh/grid ke semua sel), sesuaikan lebar kolom (autoFit), ubah style tabel, dan/atau tebalkan baris header. " +
+      "Gunakan untuk 'buat tabelnya bergaris penuh', 'beri garis di semua sel', 'kasih grid ke tabel', 'rapikan lebar kolom'. " +
+      "Saran: Jika baru saja memanggil create_table, pertimbangkan memanggil format_table dengan autoFit=true kecuali user meminta lebar tertentu. " +
       "Pilih tabel via tableIndex (0 = tabel pertama).",
     input_schema: {
       type: "object",
@@ -453,6 +454,10 @@
         borderColor: { type: "string", description: "Warna garis hex #RRGGBB (default hitam)." },
         style: { type: "string", description: "Nama style tabel bawaan, mis. 'Grid Table 4 - Accent 1'." },
         headerBold: { type: "boolean", description: "Tebalkan baris pertama sebagai header." },
+        autoFit: {
+          type: "boolean",
+          description: "Sesuaikan lebar tiap kolom otomatis mengikuti panjang isi teks di dalamnya (kolom pendek jadi sempit, kolom panjang jadi lebar). Gunakan untuk perintah seperti 'rapikan lebar kolom', 'sesuaikan kolom dengan isi', 'kolom No terlalu lebar'.",
+        },
       },
     },
   };

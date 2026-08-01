@@ -848,25 +848,37 @@
     await context.sync();
 
     let bordersApplied = null;
-    if (args.borders) {
-      // w:val OOXML = huruf kecil. "Thick" bukan tipe valid -> single.
-      const VAL = { Single: "single", Double: "double", Dotted: "dotted",
-                    Dashed: "dashed", Triple: "triple", Thick: "single" };
-      const val = args.borders === "none" ? "nil" : (VAL[args.borderStyle] || "single");
-      const sz = Math.max(2, Math.round((args.borderWidth || 1) * 8)); // pt -> 1/8 pt
-      const color = (args.borderColor || "#000000").replace("#", "").toUpperCase();
-
+    let autoFitApplied = null;
+    if (args.borders || args.autoFit) {
       const range = table.getRange();
       const o = range.getOoxml();
       await context.sync();
-      const newXml = applyTblBorders(o.value, args.borders, val, sz, color);
-      range.insertOoxml(newXml, Word.InsertLocation.replace);
-      await context.sync();
-      bordersApplied = args.borders;
+      let newXml = o.value;
+
+      if (args.borders) {
+        const VAL = { Single: "single", Double: "double", Dotted: "dotted",
+                      Dashed: "dashed", Triple: "triple", Thick: "single" };
+        const val = args.borders === "none" ? "nil" : (VAL[args.borderStyle] || "single");
+        const sz = Math.max(2, Math.round((args.borderWidth || 1) * 8)); // pt -> 1/8 pt
+        const color = (args.borderColor || "#000000").replace("#", "").toUpperCase();
+        newXml = applyTblBorders(newXml, args.borders, val, sz, color);
+        bordersApplied = args.borders;
+      }
+      if (args.autoFit) {
+        newXml = applyTblAutoFit(newXml);
+        autoFitApplied = true;
+      }
+
+      try {
+        range.insertOoxml(newXml, Word.InsertLocation.replace);
+        await context.sync();
+      } catch(e) {
+        console.warn("format_table OOXML insertion failed:", e);
+      }
     }
 
-    return { ok: true, tableIndex: idx, borders: bordersApplied,
-             style: args.style || null, method: bordersApplied ? "ooxml" : "style" };
+    return { ok: true, tableIndex: idx, borders: bordersApplied, autoFit: autoFitApplied,
+             style: args.style || null, method: (bordersApplied || autoFitApplied) ? "ooxml" : "style" };
   }
 
   // ---- Helper: insertRichItalicRange (R5) — sisipkan teks dgn *italic* ke range ----
@@ -1057,6 +1069,60 @@
     return { ok: true, steps };
   }
 
+  function insertTblPrChild(tblPrXml, newChildXml, afterAnchors) {
+    let earliestIdx = -1;
+    for (const re of afterAnchors) {
+      const m = tblPrXml.match(re);
+      if (m && (earliestIdx === -1 || m.index < earliestIdx)) earliestIdx = m.index;
+    }
+    if (earliestIdx !== -1) {
+      return tblPrXml.slice(0, earliestIdx) + newChildXml + tblPrXml.slice(earliestIdx);
+    }
+    return tblPrXml.replace(/<\/w:tblPr>/, newChildXml + "</w:tblPr>");
+  }
+
+  function applyTblAutoFit(xml) {
+    // 1. insert <w:tblLayout w:type="autofit"/> in <w:tblPr>
+    xml = xml.replace(/<w:tblLayout\b[^>]*\/>|<w:tblLayout\b[^>]*>[\s\S]*?<\/w:tblLayout>/, "");
+    
+    xml = xml.replace(/<w:tblPr\b[^>]*\/>|<w:tblPr\b[^>]*>[\s\S]*?<\/w:tblPr>/, (tblPrMatch) => {
+      let tblPrXml = tblPrMatch;
+      if (tblPrXml.endsWith("/>")) tblPrXml = tblPrXml.replace(/\/>$/, "></w:tblPr>");
+      
+      const afterAnchors = [
+        /<w:tblCellMar\b[^>]*>[\s\S]*?<\/w:tblCellMar>/,
+        /<w:tblLook\b[^>]*\/>/,
+        /<w:tblCaption\b[^>]*\/>/,
+        /<w:tblDescription\b[^>]*\/>/
+      ];
+      return insertTblPrChild(tblPrXml, '<w:tblLayout w:type="autofit"/>', afterAnchors);
+    });
+
+    // 2. reset <w:tcW> inside all <w:tc>
+    xml = xml.replace(/<w:tc(\s|>)[^>]*>([\s\S]*?)<\/w:tc>/g, (tcFull) => {
+      const startTc = tcFull.indexOf('>') + 1;
+      const tcTag = tcFull.substring(0, startTc);
+      let inner = tcFull.substring(startTc, tcFull.length - 7);
+      
+      const autoW = '<w:tcW w:w="0" w:type="auto"/>';
+      
+      if (!/<w:tcPr(\s|>)/.test(inner)) {
+        inner = "<w:tcPr>" + autoW + "</w:tcPr>" + inner;
+      } else {
+        inner = inner.replace(/<w:tcPr\b[^>]*\/>|<w:tcPr\b[^>]*>([\s\S]*?)<\/w:tcPr>/, (tcPrMatch) => {
+          let tcPrXml = tcPrMatch;
+          if (tcPrXml.endsWith("/>")) tcPrXml = tcPrXml.replace(/\/>$/, "></w:tcPr>");
+          
+          tcPrXml = tcPrXml.replace(/<w:tcW\b[^>]*\/>|<w:tcW\b[^>]*>[\s\S]*?<\/w:tcW>/, "");
+          return tcPrXml.replace(/<w:tcPr(\s[^>]*)?>/, (m) => m + autoW);
+        });
+      }
+      return tcTag + inner + "</w:tc>";
+    });
+    
+    return xml;
+  }
+
   // Sisipkan/ganti <w:tblBorders> di dalam <w:tblPr> pertama dari OOXML tabel.
   function applyTblBorders(xml, mode, val, sz, color) {
     const edge = (tag) =>
@@ -1083,13 +1149,21 @@
       tblBorders = "<w:tblBorders>" + edges.join("") + "</w:tblBorders>";
     }
 
-    // buang tblBorders lama (bila ada), lalu sisipkan setelah <w:tblPr ...>
+    // buang tblBorders lama (bila ada), sisipkan di urutan schema yang benar
     xml = xml.replace(/<w:tblBorders>[\s\S]*?<\/w:tblBorders>/, "");
-    if (/<w:tblPr\s*\/>/.test(xml)) {
-      xml = xml.replace(/<w:tblPr\s*\/>/, "<w:tblPr>" + tblBorders + "</w:tblPr>");
-    } else {
-      xml = xml.replace(/<w:tblPr(\s[^>]*)?>/, (m) => m + tblBorders);
-    }
+    xml = xml.replace(/<w:tblPr\b[^>]*\/>|<w:tblPr\b[^>]*>[\s\S]*?<\/w:tblPr>/, (tblPrMatch) => {
+      let tblPrXml = tblPrMatch;
+      if (tblPrXml.endsWith("/>")) tblPrXml = tblPrXml.replace(/\/>$/, "></w:tblPr>");
+      const afterAnchors = [
+        /<w:shd\b[^>]*\/>/,
+        /<w:tblLayout\b[^>]*\/>/,
+        /<w:tblCellMar\b[^>]*>[\s\S]*?<\/w:tblCellMar>/,
+        /<w:tblLook\b[^>]*\/>/,
+        /<w:tblCaption\b[^>]*\/>/,
+        /<w:tblDescription\b[^>]*\/>/
+      ];
+      return insertTblPrChild(tblPrXml, tblBorders, afterAnchors);
+    });
 
     // Reset conditional formatting di <w:tblLook> jika ada (menghindari border hantu dari style)
     if (/<w:tblLook\b[^>]*\/>/.test(xml)) {
