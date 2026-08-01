@@ -333,24 +333,91 @@
   };
 
   async function set_page_layout(context, args) {
+    let margins = null;
+    if (args.marginPreset && MARGIN_PRESET[args.marginPreset]) {
+      const m = MARGIN_PRESET[args.marginPreset];
+      margins = { top: m[0], bottom: m[1], left: m[2], right: m[3] };
+    }
+    if (args.marginCm) {
+      margins = Object.assign(margins || {}, args.marginCm);
+    }
+
+    // 1) Coba native API jika didukung (WordApiDesktop 1.3)
+    const supportsPageSetup = Office.context.requirements.isSetSupported('WordApiDesktop', '1.3');
+    if (supportsPageSetup) {
+      try {
+        const sections = context.document.sections;
+        sections.load('items');
+        await context.sync();
+
+        const PAPER_CM = {
+          A4: [21.0, 29.7],
+          Letter: [21.59, 27.94],
+          Legal: [21.59, 35.56],
+          F4: [21.0, 33.0],
+          Folio: [21.0, 33.0]
+        };
+
+        const cmToPts = (cm) => cm * 28.3464567; // 1 cm = 28.3465 points
+
+        for (let i = 0; i < sections.items.length; i++) {
+          const section = sections.items[i];
+          const ps = section.pageSetup;
+
+          if (args.orientation) {
+            ps.orientation = args.orientation.toLowerCase() === "landscape" ? "Landscape" : "Portrait";
+          }
+          if (args.paperSize && PAPER_CM[args.paperSize]) {
+            ps.pageWidth = cmToPts(PAPER_CM[args.paperSize][0]);
+            ps.pageHeight = cmToPts(PAPER_CM[args.paperSize][1]);
+          }
+          if (margins) {
+            if (margins.top != null) ps.topMargin = cmToPts(margins.top);
+            if (margins.bottom != null) ps.bottomMargin = cmToPts(margins.bottom);
+            if (margins.left != null) ps.leftMargin = cmToPts(margins.left);
+            if (margins.right != null) ps.rightMargin = cmToPts(margins.right);
+          }
+        }
+        await context.sync();
+
+        // Verifikasi dari section pertama
+        if (margins && sections.items.length > 0) {
+          const firstSection = sections.items[0];
+          firstSection.pageSetup.load(["topMargin", "bottomMargin", "leftMargin", "rightMargin"]);
+          await context.sync();
+
+          const ps = firstSection.pageSetup;
+          const diff = (a, b) => Math.abs(a - b);
+          
+          if ((margins.top != null && diff(ps.topMargin, cmToPts(margins.top)) > 1) ||
+              (margins.bottom != null && diff(ps.bottomMargin, cmToPts(margins.bottom)) > 1) ||
+              (margins.left != null && diff(ps.leftMargin, cmToPts(margins.left)) > 1) ||
+              (margins.right != null && diff(ps.rightMargin, cmToPts(margins.right)) > 1)) {
+            throw new Error("Verifikasi native pageSetup gagal");
+          }
+        }
+
+        return {
+          ok: true,
+          method: "native",
+          orientation: args.orientation || null,
+          paperSize: args.paperSize || null,
+          margin: margins ? "diatur" : null,
+        };
+      } catch (e) {
+        console.warn("Native pageSetup gagal/error, fallback ke OOXML:", e);
+      }
+    }
+
+    // 2) FALLBACK OOXML JALUR LAMA
     try {
       const body = context.document.body;
       const ooxmlResult = body.getOoxml();
       await context.sync();
       let xml = ooxmlResult.value;
 
-      // 1) pgSz: ukuran & orientasi
       if (args.paperSize || args.orientation) {
         xml = patchPgSz(xml, args.paperSize, args.orientation);
-      }
-      // 2) pgMar: margin
-      let margins = null;
-      if (args.marginPreset && MARGIN_PRESET[args.marginPreset]) {
-        const m = MARGIN_PRESET[args.marginPreset];
-        margins = { top: m[0], bottom: m[1], left: m[2], right: m[3] };
-      }
-      if (args.marginCm) {
-        margins = Object.assign(margins || {}, args.marginCm);
       }
       if (margins) {
         xml = patchPgMar(xml, margins);
@@ -360,14 +427,13 @@
       body.insertOoxml(xml, Word.InsertLocation.replace);
       await context.sync();
 
-      // Verifikasi hasil OOXML untuk margin (step 3)
+      // Verifikasi OOXML
       if (margins) {
         const verifyResult = body.getOoxml();
         await context.sync();
         const verifyXml = verifyResult.value;
         const tw = (cm) => (cm == null ? null : Math.round(cm * CM));
         
-        // Ambil semua tag pgMar yang dipatch
         const matches = verifyXml.match(/<w:pgMar\b[^>]*\/>/g);
         if (matches && matches.length > 0) {
            const expectedTop = tw(margins.top);
@@ -382,12 +448,11 @@
              const left = numAttr(tag, "w:left");
              const right = numAttr(tag, "w:right");
 
-             // Toleransi pembulatan +-2 twip
              if ((expectedTop != null && diff(top, expectedTop) > 2) ||
                  (expectedBottom != null && diff(bottom, expectedBottom) > 2) ||
                  (expectedLeft != null && diff(left, expectedLeft) > 2) ||
                  (expectedRight != null && diff(right, expectedRight) > 2)) {
-               return { ok: false, error: "Margin tidak berhasil diterapkan, terapkan manual lewat Layout > Margins" };
+               return { ok: false, method: "ooxml-fallback", error: "Margin tidak berhasil diterapkan, terapkan manual lewat Layout > Margins" };
              }
            }
         }
@@ -395,6 +460,7 @@
 
       return {
         ok: true,
+        method: "ooxml-fallback",
         orientation: args.orientation || null,
         paperSize: args.paperSize || null,
         margin: margins ? "diatur" : null,
