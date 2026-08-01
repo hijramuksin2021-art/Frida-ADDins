@@ -66,7 +66,7 @@ const cite = require("./rag/cite");
 const providerConfig = require("./rag/providerConfig");
 const aiProvider = require("./rag/aiProvider");
 const guidelineConfig = require("./rag/guidelineConfig");
-const { validateGuideline } = require("./guidelineSchema");
+// guidelineSchema removed — open-schema approach, no strict validation
 const { detectGuidelineFromMessage } = require("./rag/guideline-fuzzy");
 guidelineConfig.init();
 
@@ -323,29 +323,17 @@ function getAgentSystemPrompt() {
   let prompt = AGENT_SYSTEM_PROMPT_BASE;
   const gl = guidelineConfig.getActiveGuideline();
   if (gl) {
-    prompt += "\n\nPANDUAN PENULISAN AKTIF: " + gl.nama + "\n";
-    prompt += "SAAT MENYUNTING/MEMPERBAIKI TEKS, TERAPKAN ATURAN BERIKUT:\n";
-    if (gl.format_umum) {
-      if (gl.format_umum.font) {
-        prompt += "- Font: " + gl.format_umum.font.jenis + ", ukuran " + gl.format_umum.font.ukuran_isi_dokumen + "pt\n";
-      }
-      if (gl.format_umum.margin) {
-        prompt += "- Margin: kiri " + gl.format_umum.margin.kiri + ", atas " + gl.format_umum.margin.atas + ", kanan " + gl.format_umum.margin.kanan + ", bawah " + gl.format_umum.margin.bawah + "\n";
-      }
-      if (gl.format_umum.spasi) {
-        prompt += "- Spasi umum dalam teks: " + gl.format_umum.spasi.umum_dalam_teks + "\n";
-      }
-      if (gl.format_umum.aturan_teks_khusus) {
-        prompt += "- Istilah asing: " + gl.format_umum.aturan_teks_khusus.istilah_asing_dan_lokal + "\n";
-        prompt += "- Angka < 10: " + gl.format_umum.aturan_teks_khusus.angka_kurang_dari_10_dalam_kalimat + "\n";
-      }
-    }
-    if (gl.aturan_plagiarisme) {
-      prompt += "- Plagiarisme: batas maksimal " + gl.aturan_plagiarisme.batas_maksimal + ". " + gl.aturan_plagiarisme.definisi + "\n";
-    }
-    if (gl.sitasi && gl.sitasi.gaya) {
-      prompt += "- Gaya Sitasi: " + gl.sitasi.gaya + "\n";
-    }
+    // Open-schema: kirim seluruh content JSON ke AI agar dipahami secara semantik
+    const contentObj = gl.content || gl; // support wrapper format & legacy
+    const displayName = gl.displayName || gl.nama || gl.id || "Pedoman";
+    const contentStr = JSON.stringify(contentObj, null, 2);
+    prompt += "\n\nBerikut adalah pedoman penulisan yang WAJIB kamu ikuti untuk seluruh dokumen ini.";
+    prompt += "\nPedoman ini bernama: " + displayName;
+    prompt += "\nPedoman ini dalam format JSON bebas — pahami seluruh instruksi format, struktur bab, ";
+    prompt += "gaya sitasi, aturan tabel/gambar, dan ketentuan lain di dalamnya, lalu terapkan secara ";
+    prompt += "konsisten pada setiap saran/tulisan yang kamu berikan:\n";
+    prompt += "\n<<PANDUAN_JSON>>\n" + contentStr + "\n<<AKHIR_PANDUAN>>\n";
+    prompt += "\nJika instruksi user bertentangan dengan pedoman ini, ikuti pedoman ini kecuali user secara eksplisit minta menyimpang.\n";
   }
   return prompt;
 }
@@ -534,7 +522,45 @@ function handleProvider(req, res) {
 }
 // =============================================================================
 
-// ===================== Guideline Profile (R7) =====================
+// ===================== Guideline Profile (R7) — Open-Schema =====================
+
+// --- Rate limiter sederhana untuk upload (max 10/menit/IP) ---
+const _uploadRateMap = {};
+function checkUploadRate(ip) {
+  const now = Date.now();
+  const window = 60000; // 1 menit
+  if (!_uploadRateMap[ip]) _uploadRateMap[ip] = [];
+  _uploadRateMap[ip] = _uploadRateMap[ip].filter(t => now - t < window);
+  if (_uploadRateMap[ip].length >= 10) return false;
+  _uploadRateMap[ip].push(now);
+  return true;
+}
+
+// --- Slugify + random hex ---
+function slugify(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50) || "pedoman";
+}
+function randomHex(n) {
+  let s = "";
+  for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 16).toString(16);
+  return s;
+}
+
+// --- Token auth untuk upload/delete ---
+function checkAdminToken(req) {
+  const envToken = process.env.GUIDELINE_ADMIN_TOKEN;
+  if (!envToken) return true; // dev lokal tanpa token = lewati
+  const hdr = req.headers["x-frida-token"];
+  return hdr === envToken;
+}
+
+const GUIDELINES_DIR = path.join(__dirname, "guidelines");
+const MAX_GUIDELINE_BYTES = 300 * 1024; // 300KB
+
 function handleGuideline(req, res) {
   const url = req.url.split("?")[0];
 
@@ -543,22 +569,18 @@ function handleGuideline(req, res) {
     return sendJson(res, 200, guidelineConfig.status());
   }
 
-  // GET /api/guidelines -> daftar semua guideline yang tersedia
+  // GET /api/guidelines -> daftar (ringan: id, displayName, uploadedAt saja)
   if (req.method === "GET" && url === "/api/guidelines") {
-    const dir = path.join(__dirname, "guidelines");
     try {
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const files = fs.readdirSync(dir).filter(f => f.endsWith(".json"));
+      if (!fs.existsSync(GUIDELINES_DIR)) fs.mkdirSync(GUIDELINES_DIR, { recursive: true });
+      const files = fs.readdirSync(GUIDELINES_DIR).filter(f => f.endsWith(".json"));
       const list = files.map(f => {
         try {
-          const content = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+          const data = JSON.parse(fs.readFileSync(path.join(GUIDELINES_DIR, f), "utf8"));
           return {
-            id: content.id,
-            nama: content.nama,
-            fakultas: content.fakultas,
-            universitas: content.universitas,
-            tahun_terbit: content.tahun_terbit,
-            type: content.type
+            id: data.id || f.replace(/\.json$/, ""),
+            displayName: data.displayName || data.nama || f.replace(/\.json$/, ""),
+            uploadedAt: data.uploadedAt || null
           };
         } catch (_) { return null; }
       }).filter(Boolean);
@@ -568,35 +590,31 @@ function handleGuideline(req, res) {
     }
   }
 
-  // GET /api/guidelines/:id -> detail lengkap satu guideline
+  // GET /api/guidelines/:id -> detail lengkap (termasuk content)
   if (req.method === "GET" && /^\/api\/guidelines\/[\w-]+$/.test(url)) {
     const id = url.split("/").pop();
-    const dir = path.join(__dirname, "guidelines");
     try {
-      const p = path.join(dir, id + ".json");
+      const p = path.join(GUIDELINES_DIR, id + ".json");
       if (!fs.existsSync(p)) return sendJson(res, 404, { error: "Guideline tidak ditemukan" });
-      const content = JSON.parse(fs.readFileSync(p, "utf8"));
-      return sendJson(res, 200, content);
+      const data = JSON.parse(fs.readFileSync(p, "utf8"));
+      return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 500, { error: String(err.message || err) });
     }
   }
 
-  // DELETE /api/guidelines/:id -> hapus guideline
+  // DELETE /api/guidelines/:id -> hapus guideline (kecuali default)
   if (req.method === "DELETE" && /^\/api\/guidelines\/[\w-]+$/.test(url)) {
+    if (!checkAdminToken(req)) return sendJson(res, 401, { error: "Token tidak valid." });
     const id = url.split("/").pop();
     if (id === "unkhair-pertanian-2021") {
       return sendJson(res, 403, { error: "Guideline default tidak boleh dihapus." });
     }
-    const dir = path.join(__dirname, "guidelines");
     try {
-      const p = path.join(dir, id + ".json");
+      const p = path.join(GUIDELINES_DIR, id + ".json");
       if (fs.existsSync(p)) {
         fs.unlinkSync(p);
-        // Jika yang aktif dihapus, reset ke default/kosong
-        if (guidelineConfig.getActiveId() === id) {
-          guidelineConfig.setActiveId("");
-        }
+        if (guidelineConfig.getActiveId() === id) guidelineConfig.setActiveId("");
         return sendJson(res, 200, { ok: true });
       }
       return sendJson(res, 404, { error: "Guideline tidak ditemukan" });
@@ -605,33 +623,71 @@ function handleGuideline(req, res) {
     }
   }
 
+  // --- Body-based routes (POST) ---
+  // Body size guard
+  const contentLength = parseInt(req.headers["content-length"] || "0", 10);
+  if (contentLength > MAX_GUIDELINE_BYTES) {
+    return sendJson(res, 413, { error: "Ukuran file melebihi batas maksimal 300KB." });
+  }
+
   let body = "";
-  req.on("data", (c) => (body += c));
+  let bodySize = 0;
+  req.on("data", (c) => {
+    bodySize += c.length;
+    if (bodySize > MAX_GUIDELINE_BYTES) {
+      req.destroy();
+      return sendJson(res, 413, { error: "Ukuran file melebihi batas maksimal 300KB." });
+    }
+    body += c;
+  });
   req.on("end", () => {
     try {
       const b = JSON.parse(body || "{}");
+
+      // POST /api/guideline -> set guideline aktif
       if (req.method === "POST" && url === "/api/guideline") {
         const st = guidelineConfig.setActiveId(b.id);
         return sendJson(res, 200, { ok: true, status: st });
       }
-      
-      // POST /api/guidelines/upload -> validasi & simpan JSON guideline baru
+
+      // POST /api/guidelines/upload -> open-schema upload
       if (req.method === "POST" && url === "/api/guidelines/upload") {
-        const validation = validateGuideline(b);
-        if (!validation.valid) {
-          return sendJson(res, 400, { error: "Format JSON tidak valid: " + validation.errors.join(", ") });
+        if (!checkAdminToken(req)) return sendJson(res, 401, { error: "Token tidak valid." });
+
+        // Rate limit
+        const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+        if (!checkUploadRate(ip)) {
+          return sendJson(res, 429, { error: "Terlalu banyak upload. Coba lagi dalam 1 menit." });
         }
-        
-        const dir = path.join(__dirname, "guidelines");
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        
-        const dest = path.join(dir, b.id + ".json");
-        fs.writeFileSync(dest, JSON.stringify(b, null, 2));
-        
-        return sendJson(res, 200, { ok: true, id: b.id });
+
+        // Validasi minimal: content harus ada dan berupa object
+        if (!b.content || typeof b.content !== "object" || Array.isArray(b.content)) {
+          return sendJson(res, 400, { error: "File bukan format JSON yang valid, periksa kembali file kamu." });
+        }
+
+        // displayName dari form, fallback ke nama file
+        const displayName = String(b.displayName || "Pedoman Tanpa Nama").trim();
+        const id = slugify(displayName) + "-" + randomHex(4);
+
+        const wrapper = {
+          id,
+          displayName,
+          uploadedAt: new Date().toISOString(),
+          content: b.content
+        };
+
+        if (!fs.existsSync(GUIDELINES_DIR)) fs.mkdirSync(GUIDELINES_DIR, { recursive: true });
+        const dest = path.join(GUIDELINES_DIR, id + ".json");
+        fs.writeFileSync(dest, JSON.stringify(wrapper, null, 2));
+
+        return sendJson(res, 200, { ok: true, id, displayName });
       }
+
       return sendJson(res, 404, { error: "rute guideline tidak dikenal" });
     } catch (err) {
+      if (err instanceof SyntaxError) {
+        return sendJson(res, 400, { error: "File bukan format JSON yang valid, periksa kembali file kamu." });
+      }
       return sendJson(res, 500, { error: String(err.message || err) });
     }
   });
@@ -639,15 +695,8 @@ function handleGuideline(req, res) {
 // =============================================================================
 
 function getEnforcedStyle(requestedStyle) {
-  const st = guidelineConfig.status();
-  if (st && st.gayaSitasi) {
-    const s = st.gayaSitasi.toLowerCase();
-    if (s.includes("apa")) return "APA7";
-    if (s.includes("mla")) return "MLA";
-    if (s.includes("chicago")) return "Chicago";
-    if (s.includes("harvard")) return "Harvard";
-    if (s.includes("ieee")) return "IEEE";
-  }
+  // Open-schema: gaya sitasi sekarang dipahami AI dari content JSON, bukan field mapping.
+  // Tetap pertahankan fungsi untuk backward-compat, hanya pass-through.
   return requestedStyle;
 }
 

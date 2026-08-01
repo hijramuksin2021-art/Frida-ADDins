@@ -1,6 +1,5 @@
 // guideline-ui.js — logika antarmuka untuk fitur Panduan Penulisan (Guideline Profile).
-// Fitur ini mengambil daftar panduan dari server, menampilkannya di dropdown, dan
-// menyimpan pilihan pengguna sehingga generasi AI dapat disesuaikan otomatis dengan panduan tersebut.
+// Open-schema: menerima JSON struktur apapun, server yang membungkus metadata.
 
 (function () {
   document.addEventListener("DOMContentLoaded", () => {
@@ -14,6 +13,13 @@
     if (btnUpload) btnUpload.addEventListener("click", handleUpload);
     if (btnDelete) btnDelete.addEventListener("click", handleDelete);
   });
+
+  function getAuthHeaders() {
+    const token = localStorage.getItem("fridaAdminToken");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["X-Frida-Token"] = token;
+    return headers;
+  }
 
   async function loadGuidelines() {
     try {
@@ -29,7 +35,7 @@
       guidelines.forEach(gl => {
         const opt = document.createElement("option");
         opt.value = gl.id;
-        opt.textContent = (gl.nama || gl.id) + (gl.type ? ` (${gl.type})` : "");
+        opt.textContent = gl.displayName || gl.id;
         guidelineSelect.appendChild(opt);
       });
 
@@ -84,35 +90,50 @@
 
   async function handleUpload() {
     const fileInput = document.getElementById("guidelineFileInput");
+    const displayNameInput = document.getElementById("guidelineDisplayName");
     const activeDesc = document.getElementById("activeGuidelineDesc");
+
     if (!fileInput.files || fileInput.files.length === 0) {
       alert("Pilih file JSON terlebih dahulu!");
       return;
     }
 
     const file = fileInput.files[0];
+    // Fallback displayName: dari input teks, lalu dari nama file tanpa .json
+    const displayName = (displayNameInput && displayNameInput.value.trim())
+      || file.name.replace(/\.json$/i, "");
+
     const reader = new FileReader();
     reader.onload = async function(e) {
+      let jsonContent;
       try {
-        const jsonContent = JSON.parse(e.target.result);
-        activeDesc.innerHTML = "<em>Mengunggah...</em>";
-        
+        jsonContent = JSON.parse(e.target.result);
+      } catch (err) {
+        if (activeDesc) activeDesc.innerHTML = `<span style="color:red;">File bukan format JSON yang valid, periksa kembali file kamu.</span>`;
+        return;
+      }
+
+      activeDesc.innerHTML = "<em>Mengunggah...</em>";
+
+      try {
         const resp = await fetch("/api/guidelines/upload", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(jsonContent)
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ displayName, content: jsonContent })
         });
-        
+
         const data = await resp.json();
         if (resp.ok) {
-          activeDesc.innerHTML = `<span style="color:green;">Berhasil mengunggah pedoman!</span>`;
+          const name = escapeHtml(data.displayName || displayName);
+          activeDesc.innerHTML = `<span style="color:green;">Pedoman '${name}' berhasil ditambahkan dan siap digunakan.</span>`;
           fileInput.value = "";
+          if (displayNameInput) displayNameInput.value = "";
           await loadGuidelines();
         } else {
           activeDesc.innerHTML = `<span style="color:red;">Gagal: ${escapeHtml(data.error)}</span>`;
         }
       } catch (err) {
-        activeDesc.innerHTML = `<span style="color:red;">File JSON tidak valid.</span>`;
+        activeDesc.innerHTML = `<span style="color:red;">Gagal mengunggah.</span>`;
       }
     };
     reader.readAsText(file);
@@ -122,20 +143,24 @@
     const guidelineSelect = document.getElementById("guidelineSelect");
     const activeDesc = document.getElementById("activeGuidelineDesc");
     const id = guidelineSelect.value;
-    
+    // Ambil nama dari opsi yang dipilih
+    const selectedOption = guidelineSelect.options[guidelineSelect.selectedIndex];
+    const name = selectedOption ? selectedOption.textContent : id;
+
     if (!id) {
       alert("Pilih pedoman yang ingin dihapus terlebih dahulu.");
       return;
     }
-    if (!confirm(`Yakin ingin menghapus pedoman '${id}'?`)) return;
+    if (!confirm(`Yakin ingin menghapus pedoman '${name}'?`)) return;
 
     activeDesc.innerHTML = "<em>Menghapus...</em>";
     try {
       const resp = await fetch(`/api/guidelines/${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getAuthHeaders()
       });
       const data = await resp.json();
-      
+
       if (resp.ok) {
         activeDesc.innerHTML = `<span style="color:green;">Berhasil dihapus.</span>`;
         await loadGuidelines();

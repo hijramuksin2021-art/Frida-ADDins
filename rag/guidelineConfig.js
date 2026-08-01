@@ -57,10 +57,7 @@ function status() {
   const guideline = getActiveGuideline();
   return {
     activeId: id,
-    activeName: guideline ? guideline.nama : "Tidak ada / Generik",
-    activeFakultas: guideline ? guideline.fakultas : null,
-    activeUniversitas: guideline ? guideline.universitas : null,
-    gayaSitasi: guideline && guideline.sitasi ? guideline.sitasi.gaya : null,
+    activeName: guideline ? (guideline.displayName || guideline.nama || id) : "Tidak ada / Generik",
     hasActive: !!id
   };
 }
