@@ -640,9 +640,13 @@ function initSelectionContext() {
       var prompt = btn.getAttribute("data-action");
       if (!prompt) return;
       
-      // Sisipkan teks yang sedang diblok agar LLM tahu konteksnya
-      if (currentSelectionText) {
-        prompt += "\n\nTeks yang saya maksud:\n\"\"\"\n" + currentSelectionText + "\n\"\"\"";
+      // Sisipkan teks atau konteks khusus agar LLM paham
+      if (btn.closest("#tableSelectionContext")) {
+         if (typeof window.currentTableIndex !== 'undefined') {
+            prompt += "\n\n(Tabel yang dimaksud: indeks ke-" + window.currentTableIndex + ")";
+         }
+      } else if (currentSelectionText) {
+         prompt += "\n\nTeks yang saya maksud:\n\"\"\"\n" + currentSelectionText + "\n\"\"\"";
       }
 
       var input = document.getElementById("instruction");
@@ -658,21 +662,54 @@ function onSelectionChanged() {
     Word.run(function (context) {
       var selection = context.document.getSelection();
       selection.load("text");
+      var parentTable = selection.parentTableOrNullObject;
+      parentTable.load();
+      var tables = context.document.body.tables;
+      tables.load("items");
+      
       return context.sync().then(function () {
         var text = (selection.text || "").trim();
-        var panel = document.getElementById("selectionContext");
+        var panelTeks = document.getElementById("selectionContext");
+        var panelTabel = document.getElementById("tableSelectionContext");
         var preview = document.getElementById("selPreview");
-        if (!panel || !preview) return;
+        
+        if (!panelTeks || !preview) return;
 
-        if (text.length > 5) {
-          // Tampilkan panel
-          currentSelectionText = text;
-          preview.textContent = '"' + text + '"';
-          panel.classList.remove("hidden");
+        if (!parentTable.isNullObject && tables.items.length > 0) {
+          // Ada di dalam tabel! Cari indexnya.
+          var parentRange = parentTable.getRange();
+          var comparisons = [];
+          for (var i = 0; i < tables.items.length; i++) {
+            comparisons.push(parentRange.compareLocationWith(tables.items[i].getRange()));
+          }
+          return context.sync().then(function() {
+            var tableIndex = 0;
+            for (var i = 0; i < comparisons.length; i++) {
+               if (comparisons[i].value === Word.LocationRelation.equal) {
+                 tableIndex = i;
+                 break;
+               }
+            }
+            
+            // Tampilkan panel tabel, sembunyikan teks
+            panelTeks.classList.add("hidden");
+            if (panelTabel) {
+               window.currentTableIndex = tableIndex;
+               panelTabel.classList.remove("hidden");
+            }
+          });
         } else {
-          // Sembunyikan panel
-          currentSelectionText = "";
-          panel.classList.add("hidden");
+          // Bukan di dalam tabel, pakai logika teks biasa
+          if (panelTabel) panelTabel.classList.add("hidden");
+          
+          if (text.length > 5) {
+            currentSelectionText = text;
+            preview.textContent = '"' + text + '"';
+            panelTeks.classList.remove("hidden");
+          } else {
+            currentSelectionText = "";
+            panelTeks.classList.add("hidden");
+          }
         }
       });
     }).catch(function () {
