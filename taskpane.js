@@ -151,8 +151,15 @@ async function onSend() {
   // terkirim lagi di request berikutnya dan memblokir seluruh percakapan.
   const historyBefore = messages.slice();
 
+  let payloadText = text;
+  if (typeof window.currentTableIndex !== 'undefined' && !text.includes("indeks ke-" + window.currentTableIndex)) {
+    payloadText += "\n\n(Tabel yang dimaksud: indeks ke-" + window.currentTableIndex + ")";
+  } else if (typeof currentSelectionText !== 'undefined' && currentSelectionText && !text.includes(currentSelectionText)) {
+    payloadText += "\n\n(Konteks — teks yang sedang diseleksi user di dokumen:\n\"\"\"\n" + currentSelectionText + "\n\"\"\")";
+  }
+
   addBubble("user", text);
-  messages.push({ role: "user", content: text });
+  messages.push({ role: "user", content: payloadText });
   input.value = "";
 
   busy(true);
@@ -176,6 +183,8 @@ async function onSend() {
     saveChat();
     // [FITUR 4] Refresh statistik dokumen setelah edit
     updateDocStats();
+    // Refresh selection context agar tidak nyangkut jika teks berubah/hilang
+    if (typeof onSelectionChanged === "function") onSelectionChanged();
   }
 }
 
@@ -640,15 +649,6 @@ function initSelectionContext() {
       var prompt = btn.getAttribute("data-action");
       if (!prompt) return;
       
-      // Sisipkan teks atau konteks khusus agar LLM paham
-      if (btn.closest("#tableSelectionContext")) {
-         if (typeof window.currentTableIndex !== 'undefined') {
-            prompt += "\n\n(Tabel yang dimaksud: indeks ke-" + window.currentTableIndex + ")";
-         }
-      } else if (currentSelectionText) {
-         prompt += "\n\nTeks yang saya maksud:\n\"\"\"\n" + currentSelectionText + "\n\"\"\"";
-      }
-
       var input = document.getElementById("instruction");
       input.value = prompt;
       onSend(); // Langsung kirim
