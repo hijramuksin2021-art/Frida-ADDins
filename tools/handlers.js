@@ -383,6 +383,18 @@
             if (margins.left != null) ps.leftMargin = cmToPts(margins.left);
             if (margins.right != null) ps.rightMargin = cmToPts(margins.right);
           }
+          if (args.columns != null) {
+            try {
+              if (args.columns > 1) {
+                ps.textColumns.setCount(args.columns);
+                const spacingPts = cmToPts(args.columnSpacingCm || 0.5);
+                try { ps.textColumns.space = spacingPts; } catch(e){}
+                try { ps.textColumns.evenlySpaced = true; } catch(e){}
+              } else {
+                ps.textColumns.setCount(1);
+              }
+            } catch(e) {}
+          }
         }
         await context.sync();
 
@@ -402,6 +414,16 @@
             throw new Error("Verifikasi native pageSetup gagal");
           }
         }
+        
+        if (args.columns != null && sections.items.length > 0) {
+          const firstSection = sections.items[0];
+          firstSection.pageSetup.textColumns.load("items");
+          await context.sync();
+          
+          if (firstSection.pageSetup.textColumns.items.length !== args.columns) {
+            throw new Error("Verifikasi native pageSetup columns gagal");
+          }
+        }
 
         return {
           ok: true,
@@ -409,6 +431,7 @@
           orientation: args.orientation || null,
           paperSize: args.paperSize || null,
           margin: margins ? "diatur" : null,
+          columns: args.columns || null,
         };
       } catch (e) {
         console.warn("Native pageSetup gagal/error, fallback ke OOXML:", e);
@@ -427,6 +450,9 @@
       }
       if (margins) {
         xml = patchPgMar(xml, margins);
+      }
+      if (args.columns != null) {
+        xml = patchPgCols(xml, args.columns, args.columnSpacingCm);
       }
 
       body.clear();
@@ -464,12 +490,23 @@
         }
       }
 
+      if (args.columns != null) {
+        const verifyResult = body.getOoxml();
+        await context.sync();
+        const verifyXml = verifyResult.value;
+        const hasCols = /<w:cols\b[^>]*\/>/.test(verifyXml) || /<w:cols\b[^>]*>[\s\S]*?<\/w:cols>/.test(verifyXml);
+        if (args.columns > 1 && !hasCols) {
+           return { ok: false, method: "ooxml-fallback", error: "Jumlah kolom tidak berhasil diterapkan, terapkan manual lewat Layout > Columns" };
+        }
+      }
+
       return {
         ok: true,
         method: "ooxml-fallback",
         orientation: args.orientation || null,
         paperSize: args.paperSize || null,
         margin: margins ? "diatur" : null,
+        columns: args.columns || null,
       };
     } catch (e) {
       return { ok: false, error: e.message || "Gagal mengatur layout halaman." };
@@ -477,6 +514,45 @@
   }
 
   // --- util OOXML untuk set_page_layout ---
+  function patchPgCols(xml, columns, spacingCm) {
+    const matches = xml.match(/<w:sectPr\b[^>]*>/g);
+    if (!matches || matches.length === 0) {
+      throw new Error("Tidak ditemukan tag sectPr di OOXML dokumen");
+    }
+
+    if (columns <= 1) {
+       return xml.replace(/<w:sectPr\b[^>]*>([\s\S]*?)<\/w:sectPr>/g, (sectPrTag, inner) => {
+         let newInner = inner;
+         if (/<w:cols\b[^>]*\/>/.test(newInner)) {
+           newInner = newInner.replace(/<w:cols\b[^>]*\/>/, '<w:cols w:num="1" w:space="708" w:equalWidth="1"/>');
+         } else if (/<w:cols\b[^>]*>[\s\S]*?<\/w:cols>/.test(newInner)) {
+           newInner = newInner.replace(/<w:cols\b[^>]*>[\s\S]*?<\/w:cols>/, '<w:cols w:num="1" w:space="708" w:equalWidth="1"/>');
+         }
+         return sectPrTag.replace(inner, newInner);
+       });
+    }
+
+    const CM = 567.0;
+    const tw = Math.round((spacingCm || 0.5) * CM);
+    const colsTag = `<w:cols w:num="${columns}" w:space="${tw}" w:equalWidth="1"/>`;
+    
+    return xml.replace(/<w:sectPr\b[^>]*>([\s\S]*?)<\/w:sectPr>/g, (sectPrTag, inner) => {
+      let newInner = inner;
+      if (/<w:cols\b[^>]*\/>/.test(newInner)) {
+        newInner = newInner.replace(/<w:cols\b[^>]*\/>/, colsTag);
+      } else if (/<w:cols\b[^>]*>[\s\S]*?<\/w:cols>/.test(newInner)) {
+        newInner = newInner.replace(/<w:cols\b[^>]*>[\s\S]*?<\/w:cols>/, colsTag);
+      } else if (/<w:pgMar\b[^>]*\/>/.test(newInner)) {
+        newInner = newInner.replace(/(<w:pgMar\b[^>]*\/>)/, "$1" + colsTag);
+      } else if (/<w:pgSz\b[^>]*\/>/.test(newInner)) {
+        newInner = newInner.replace(/(<w:pgSz\b[^>]*\/>)/, "$1" + colsTag);
+      } else {
+        newInner = colsTag + newInner;
+      }
+      return sectPrTag.replace(inner, newInner);
+    });
+  }
+
   function patchPgSz(xml, paperSize, orientation) {
     const matches = xml.match(/<w:pgSz\b[^>]*\/>/g);
     if (!matches || matches.length === 0) {
