@@ -38,15 +38,15 @@ function guessInstitution(text) {
 // parsedMeta = { title, year, doi } dari parse.js
 async function build({ filename, text, parsedMeta }) {
   parsedMeta = parsedMeta || {};
+  const type = guessType(filename, text);
 
-  // 1) DOI -> Crossref (resmi)
-  if (parsedMeta.doi) {
+  // 1) DOI -> Crossref (resmi) (kecuali untuk skripsi/tesis yang rawan salah-ambil DOI dari daftar pustaka)
+  if (parsedMeta.doi && type !== "thesis") {
     const cr = await crossref.fetchByDoi(parsedMeta.doi);
     if (cr && cr.title) return { csl: cr, confidence: "high" };
   }
 
   // 2) tebakan lokal
-  const type = guessType(filename, text);
   const csl = {
     type,
     title: parsedMeta.title || (filename || "").replace(/\.[^.]+$/, ""),

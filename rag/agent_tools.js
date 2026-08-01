@@ -30,8 +30,23 @@ async function search_uploaded_sources(input) {
   all.forEach((d) => (titles[d.id] = d.title));
 
   if (!hits.length) {
-    return { hits: [], note: "Tidak ada kutipan relevan di sumber (bukti tak cukup). " +
-      "Jika sumber belum diindeks, minta pengguna klik 'Indeks ulang sumber'." };
+    // Fallback: cek apakah query merujuk pada nama file (bukan makna kontennya)
+    const resolveMatch = await resolveSourceTool({ query });
+    let possibleMatch = null;
+    if (resolveMatch && resolveMatch.best_id && resolveMatch.score > 0.3) {
+      possibleMatch = {
+        document_id: resolveMatch.best_id,
+        title: resolveMatch.title,
+        filename: resolveMatch.filename,
+        note: "Dokumen ini ada di sistem, tapi kontennya tidak memiliki kemiripan semantik dengan query. Gunakan resolve_source untuk pertanyaan terkait identitas/keberadaan dokumen."
+      };
+    }
+    return { 
+      hits: [], 
+      possibleMatch,
+      note: "Tidak ada kutipan relevan di sumber secara semantik (bukti tak cukup). " +
+            "Jika sumber belum diindeks, minta pengguna klik 'Indeks ulang sumber'." 
+    };
   }
   return {
     hits: hits.map((h) => ({

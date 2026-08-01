@@ -49,7 +49,8 @@ function guessYear(text) {
 
 // Tebakan DOI (utk verifikasi Crossref di R3).
 function findDoi(text) {
-  const m = String(text || "").match(/\b10\.\d{4,9}\/[^\s"<>]+/i);
+  const head = String(text || "").slice(0, 2000);
+  const m = head.match(/\b10\.\d{4,9}\/[^\s"<>]+/i);
   return m ? m[0].replace(/[.,;)]+$/, "") : null;
 }
 
