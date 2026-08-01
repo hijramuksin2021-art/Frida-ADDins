@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const ROOT = path.join(__dirname, "..", "data", "sources");
+const ROOT = path.join(__dirname, "..", "persistent-data", "sources");
 const INDEX = path.join(ROOT, "index.json");
 
 function ensureDir() { fs.mkdirSync(ROOT, { recursive: true }); }

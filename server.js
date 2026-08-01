@@ -560,7 +560,7 @@ function checkAdminToken(req) {
   return hdr === envToken;
 }
 
-const GUIDELINES_DIR = path.join(__dirname, "guidelines");
+const GUIDELINES_DIR = path.join(__dirname, "persistent-data", "guidelines");
 const MAX_GUIDELINE_BYTES = 300 * 1024; // 300KB
 
 function handleGuideline(req, res) {
@@ -871,6 +871,16 @@ function onListening(scheme) {
 }
 
 (async () => {
+  // Pastikan folder pedoman persisten ada dan file default tercopy jika volume baru/kosong
+  if (!fs.existsSync(GUIDELINES_DIR)) {
+    fs.mkdirSync(GUIDELINES_DIR, { recursive: true });
+  }
+  const defaultGlSrc = path.join(__dirname, "defaults", "unkhair-pertanian-2021.json");
+  const defaultGlDest = path.join(GUIDELINES_DIR, "unkhair-pertanian-2021.json");
+  if (fs.existsSync(defaultGlSrc) && !fs.existsSync(defaultGlDest)) {
+    fs.copyFileSync(defaultGlSrc, defaultGlDest);
+  }
+
   // Hosted (Railway): HTTP polos, bind 0.0.0.0, tanpa dev-certs.
   if (HOSTED) {
     http.createServer(requestHandler).listen(PORT, "0.0.0.0", () => onListening("http"));

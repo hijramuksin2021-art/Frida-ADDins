@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const FILE = path.join(__dirname, "..", "guideline.local.json");
-const GUIDELINES_DIR = path.join(__dirname, "..", "guidelines");
+const GUIDELINES_DIR = path.join(__dirname, "..", "persistent-data", "guidelines");
 
 let activeId = ""; // Kosong berarti "Tidak ada / Generik"
 

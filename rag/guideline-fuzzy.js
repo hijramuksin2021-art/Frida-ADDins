@@ -5,7 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const GUIDELINES_DIR = path.join(__dirname, "guidelines");
+const GUIDELINES_DIR = path.join(__dirname, "..", "persistent-data", "guidelines");
 
 // Tokenisasi string untuk fuzzy matching
 function tokenize(str) {

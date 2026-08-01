@@ -15,6 +15,7 @@ tmp/
 
 # Data Research Copilot (sumber terunggah & KB) — jangan commit dokumen pengguna
 data/
+persistent-data/
 
 # Sertifikat dev (jika tergenerate di proyek)
 *.pem
