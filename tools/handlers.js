@@ -333,39 +333,85 @@
   };
 
   async function set_page_layout(context, args) {
-    const body = context.document.body;
-    const ooxmlResult = body.getOoxml();
-    await context.sync();
-    let xml = ooxmlResult.value;
+    try {
+      const body = context.document.body;
+      const ooxmlResult = body.getOoxml();
+      await context.sync();
+      let xml = ooxmlResult.value;
 
-    // 1) pgSz: ukuran & orientasi
-    if (args.paperSize || args.orientation) {
-      xml = patchPgSz(xml, args.paperSize, args.orientation);
-    }
-    // 2) pgMar: margin
-    let margins = null;
-    if (args.marginPreset && MARGIN_PRESET[args.marginPreset]) {
-      const m = MARGIN_PRESET[args.marginPreset];
-      margins = { top: m[0], bottom: m[1], left: m[2], right: m[3] };
-    }
-    if (args.marginCm) {
-      margins = Object.assign(margins || {}, args.marginCm);
-    }
-    if (margins) xml = patchPgMar(xml, margins);
+      // 1) pgSz: ukuran & orientasi
+      if (args.paperSize || args.orientation) {
+        xml = patchPgSz(xml, args.paperSize, args.orientation);
+      }
+      // 2) pgMar: margin
+      let margins = null;
+      if (args.marginPreset && MARGIN_PRESET[args.marginPreset]) {
+        const m = MARGIN_PRESET[args.marginPreset];
+        margins = { top: m[0], bottom: m[1], left: m[2], right: m[3] };
+      }
+      if (args.marginCm) {
+        margins = Object.assign(margins || {}, args.marginCm);
+      }
+      if (margins) {
+        xml = patchPgMar(xml, margins);
+      }
 
-    body.clear();
-    body.insertOoxml(xml, Word.InsertLocation.replace);
-    await context.sync();
-    return {
-      ok: true,
-      orientation: args.orientation || null,
-      paperSize: args.paperSize || null,
-      margin: margins ? "diatur" : null,
-    };
+      body.clear();
+      body.insertOoxml(xml, Word.InsertLocation.replace);
+      await context.sync();
+
+      // Verifikasi hasil OOXML untuk margin (step 3)
+      if (margins) {
+        const verifyResult = body.getOoxml();
+        await context.sync();
+        const verifyXml = verifyResult.value;
+        const tw = (cm) => (cm == null ? null : Math.round(cm * CM));
+        
+        // Ambil semua tag pgMar yang dipatch
+        const matches = verifyXml.match(/<w:pgMar\b[^>]*\/>/g);
+        if (matches && matches.length > 0) {
+           const expectedTop = tw(margins.top);
+           const expectedBottom = tw(margins.bottom);
+           const expectedLeft = tw(margins.left);
+           const expectedRight = tw(margins.right);
+           const diff = (a, b) => Math.abs(a - b);
+
+           for (const tag of matches) {
+             const top = numAttr(tag, "w:top");
+             const bottom = numAttr(tag, "w:bottom");
+             const left = numAttr(tag, "w:left");
+             const right = numAttr(tag, "w:right");
+
+             // Toleransi pembulatan +-2 twip
+             if ((expectedTop != null && diff(top, expectedTop) > 2) ||
+                 (expectedBottom != null && diff(bottom, expectedBottom) > 2) ||
+                 (expectedLeft != null && diff(left, expectedLeft) > 2) ||
+                 (expectedRight != null && diff(right, expectedRight) > 2)) {
+               return { ok: false, error: "Margin tidak berhasil diterapkan, terapkan manual lewat Layout > Margins" };
+             }
+           }
+        }
+      }
+
+      return {
+        ok: true,
+        orientation: args.orientation || null,
+        paperSize: args.paperSize || null,
+        margin: margins ? "diatur" : null,
+      };
+    } catch (e) {
+      return { ok: false, error: e.message || "Gagal mengatur layout halaman." };
+    }
   }
 
   // --- util OOXML untuk set_page_layout ---
   function patchPgSz(xml, paperSize, orientation) {
+    const matches = xml.match(/<w:pgSz\b[^>]*\/>/g);
+    if (!matches || matches.length === 0) {
+      throw new Error("Tidak ditemukan tag pgSz di OOXML dokumen — kemungkinan struktur dokumen tidak terduga");
+    }
+    console.log('pgSz sections patched:', matches.length);
+
     return xml.replace(/<w:pgSz\b[^>]*\/>/g, (tag) => {
       let w = numAttr(tag, "w:w"), h = numAttr(tag, "w:h");
       if (paperSize && PAPER[paperSize]) { w = PAPER[paperSize][0]; h = PAPER[paperSize][1]; }
@@ -377,6 +423,12 @@
   }
   function patchPgMar(xml, m) {
     const tw = (cm) => (cm == null ? null : Math.round(cm * CM));
+    const matches = xml.match(/<w:pgMar\b[^>]*\/>/g);
+    if (!matches || matches.length === 0) {
+      throw new Error("Tidak ditemukan tag pgMar di OOXML dokumen — kemungkinan struktur dokumen tidak terduga");
+    }
+    console.log('pgMar sections patched:', matches.length);
+
     return xml.replace(/<w:pgMar\b[^>]*\/>/g, (tag) => {
       const top = tw(m.top) ?? numAttr(tag, "w:top");
       const bottom = tw(m.bottom) ?? numAttr(tag, "w:bottom");
