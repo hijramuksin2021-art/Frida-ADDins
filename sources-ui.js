@@ -36,12 +36,18 @@
     } catch (_) {}
   }
 
+  function getWs() { return window.FRIDA_WORKSPACE_ID || localStorage.getItem("frida_workspace_id") || "default"; }
+
   async function reindex() {
     const btn = document.getElementById("srcReindex");
     if (btn) btn.disabled = true;
     srcStatus("Mengindeks sumber (embedding)… pertama kali bisa lama (unduh model).");
     try {
-      const r = await (await fetch("/api/sources/reindex", { method: "POST" })).json();
+      const r = await (await fetch("/api/sources/reindex", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace: getWs() })
+      })).json();
       const rows = r.result || [];
       const done = rows.filter((x) => x.numChunks != null);
       const skipped = rows.filter((x) => x.skipped);
@@ -85,7 +91,7 @@
         const dataBase64 = await readAsBase64(f);
         const resp = await fetch("/api/sources/upload", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: f.name, mime: f.type, dataBase64 }),
+          body: JSON.stringify({ filename: f.name, mime: f.type, dataBase64, workspace: getWs() }),
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
@@ -103,7 +109,7 @@
     const box = document.getElementById("srcList");
     if (!box) return;
     try {
-      const resp = await fetch("/api/sources");
+      const resp = await fetch("/api/sources?workspace=" + encodeURIComponent(getWs()));
       const data = await resp.json();
       const items = data.sources || [];
       const countEl = document.getElementById("srcCount");
@@ -189,7 +195,7 @@
     try {
       const r = await fetch("/api/sources/" + id + "/metadata", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csl }),
+        body: JSON.stringify({ csl, workspace: getWs() }),
       });
       if (!r.ok) throw new Error((await r.json()).error || "gagal");
       srcStatus("Metadata tersimpan — sitasi siap dipakai.", "ok");
@@ -200,7 +206,7 @@
 
   async function removeSource(id) {
     try {
-      await fetch("/api/sources/" + id, { method: "DELETE" });
+      await fetch("/api/sources/" + id + "?workspace=" + encodeURIComponent(getWs()), { method: "DELETE" });
       srcStatus("Sumber dihapus", "ok");
     } catch (_) {}
     refreshList();

@@ -370,9 +370,11 @@ async function callAgent(messages) {
 }
 
 // Jalankan satu tool server (RAG) -> blok tool_result.
-async function runServerTool(tu) {
+async function runServerTool(tu, workspace) {
   const real = resolveToolName(tu.name) || tu.name;
-  const out = await ragAgentTools.executeServerTool(real, tu.input || {});
+  const input = tu.input || {};
+  input.workspace = workspace || "default";
+  const out = await ragAgentTools.executeServerTool(real, input);
   return {
     type: "tool_result", tool_use_id: tu.id,
     is_error: !!(out && out.error),
@@ -383,7 +385,7 @@ async function runServerTool(tu) {
 // Loop agentic di SERVER: tool server (RAG) dieksekusi di sini; saat model
 // memanggil tool client (Word), kembalikan ke task pane untuk Word.run.
 const AGENT_MAX_STEPS = 40;
-async function runAgentServerLoop(messages) {
+async function runAgentServerLoop(messages, workspace) {
   for (let step = 0; step < AGENT_MAX_STEPS; step++) {
     const data = await callAgent(messages);
     messages.push({ role: "assistant", content: data.content });
@@ -397,13 +399,13 @@ async function runAgentServerLoop(messages) {
     if (clientTU.length === 0) {
       // semua server-tool -> eksekusi & lanjut loop tanpa ke klien
       const results = [];
-      for (const tu of serverTU) results.push(await runServerTool(tu));
+      for (const tu of serverTU) results.push(await runServerTool(tu, workspace));
       messages.push({ role: "user", content: results });
       continue;
     }
     // ada client-tool -> eksekusi server-tool yang menyertai, lalu kembali ke klien
     const serverResults = [];
-    for (const tu of serverTU) serverResults.push(await runServerTool(tu));
+    for (const tu of serverTU) serverResults.push(await runServerTool(tu, workspace));
     return { done: false, content: data.content, messages, serverResults };
   }
   return { done: false, content: [{ type: "text", text: "Batas langkah server tercapai." }],
@@ -440,7 +442,7 @@ function handleAgent(req, res) {
         }
       }
 
-      const result = await runAgentServerLoop(messages);
+      const result = await runAgentServerLoop(messages, parsedBody.workspace);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
     } catch (err) {
@@ -773,17 +775,22 @@ async function handleSources(req, res) {
       const entries = cite.bibliography(b.source_ids, enforcedStyle);
       return sendJson(res, 200, { entries, appliedStyle: enforcedStyle });
     }
-    // PATCH /api/sources/:id/metadata  { csl }
+    // PATCH /api/sources/:id/metadata  { csl, workspace }
     if (req.method === "PATCH" && /^\/api\/sources\/[\w-]+\/metadata$/.test(url)) {
       const id = url.split("/")[3];
       const b = JSON.parse((await readBody(req)) || "{}");
+      const doc = sourceStore.list(b.workspace).find(d => d.id === id);
+      if (!doc) return sendJson(res, 404, { error: "sumber tak ditemukan atau bukan milik workspace ini" });
       const csl2 = sourceStore.updateMetadata(id, b.csl || {});
-      if (!csl2) return sendJson(res, 404, { error: "sumber tak ditemukan" });
       return sendJson(res, 200, { csl: csl2 });
     }
-    // DELETE /api/sources/:id
+    // DELETE /api/sources/:id?workspace=...
     if (req.method === "DELETE" && /^\/api\/sources\/[\w-]+$/.test(url)) {
       const id = url.split("/").pop();
+      const ws = (req.url.split("?")[1] || "").match(/workspace=([^&]+)/);
+      const workspace = ws ? decodeURIComponent(ws[1]) : "default";
+      const doc = sourceStore.list(workspace).find(d => d.id === id);
+      if (!doc) return sendJson(res, 404, { error: "sumber tak ditemukan atau bukan milik workspace ini" });
       vectors.removeChunks(id);
       return sendJson(res, 200, { removed: sourceStore.remove(id) });
     }

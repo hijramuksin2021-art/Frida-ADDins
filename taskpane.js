@@ -1,4 +1,15 @@
 /* FRIDA Agent (Fase 2) — loop agentic di klien.
+
+function getWorkspaceId() {
+  const KEY = "frida_workspace_id";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = "ws_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+window.FRIDA_WORKSPACE_ID = getWorkspaceId();
    Alur:
      1) Pengguna kirim instruksi -> ditambah ke `messages`.
      2) POST /api/agent (server relay tipis ke LLM dgn daftar tools dari registry).
@@ -202,7 +213,7 @@ async function runAgentLoop() {
     const resp = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, workspace: window.FRIDA_WORKSPACE_ID }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));

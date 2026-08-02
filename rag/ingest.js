@@ -90,9 +90,9 @@ async function ingestUpload({ filename, mime, dataBase64, workspace }) {
 }
 
 // Reindex dokumen yang belum punya vektor (mis. diunggah sebelum R1).
-async function reindexAll() {
+async function reindexAll(workspace) {
   const result = [];
-  for (const s of store.list()) {
+  for (const s of store.list(workspace)) {
     if (vectors.hasChunks(s.id)) { result.push({ id: s.id, skipped: true }); continue; }
     const full = store.get(s.id);
     if (!full || !full.text) { result.push({ id: s.id, error: "tak ada teks" }); continue; }
