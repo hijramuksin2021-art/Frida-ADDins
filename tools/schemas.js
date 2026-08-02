@@ -293,6 +293,11 @@
         area: { type: "string", enum: ["header", "footer"], description: "Bagian yang diatur." },
         text: { type: "string", description: "Teks yang ditulis (mengganti isi lama)." },
         alignment: { type: "string", enum: ["Left", "Centered", "Right"], default: "Left" },
+        skipFirstSection: {
+          type: "boolean",
+          default: false,
+          description: "Jika true, abaikan section pertama (biasanya cover/halaman judul).",
+        },
       },
       required: ["area", "text"],
     },

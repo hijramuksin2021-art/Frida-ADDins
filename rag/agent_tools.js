@@ -14,7 +14,7 @@ const MAX_CHUNK_CHARS = 700; // batasi teks per hit agar hemat token
 async function search_uploaded_sources(input) {
   const query = (input && input.query) || "";
   if (!query) return { error: "query kosong" };
-  const all = store.list();
+  const all = store.list(input.workspace);
   if (!all.length) return { hits: [], note: "Belum ada sumber terunggah." };
 
   const docIds = (input.document_ids && input.document_ids.length)
@@ -40,7 +40,7 @@ async function search_uploaded_sources(input) {
 
   if (!hits.length) {
     // Fallback: cek apakah query merujuk pada nama file (bukan makna kontennya)
-    const resolveMatch = await resolveSourceTool({ query });
+    const resolveMatch = await resolveSourceTool({ query, workspace: input.workspace });
     let possibleMatch = null;
     if (resolveMatch && resolveMatch.best_id && resolveMatch.score > 0.3) {
       possibleMatch = {

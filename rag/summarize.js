@@ -49,7 +49,7 @@ async function summarize_source(input) {
   if (!id) return { error: "source_id wajib diisi" };
 
   const doc = store.get(id);
-  if (!doc) return { error: "sumber tidak ditemukan: " + id };
+  if (!doc || (input.workspace && doc.workspace !== input.workspace)) return { error: "sumber tidak ditemukan: " + id };
 
   const text = truncate(doc.text || "", MAX_CHARS);
   if (!text.trim()) {
@@ -112,7 +112,7 @@ async function compare_sources(input) {
   const missing = [];
   for (const id of ids.slice(0, 5)) { // maks 5 sumber agar tidak meledak token
     const doc = store.get(id);
-    if (!doc) { missing.push(id); continue; }
+    if (!doc || (input.workspace && doc.workspace !== input.workspace)) { missing.push(id); continue; }
     const text = truncate(doc.text || "", MAX_CHARS_COMPARE);
     if (!text.trim()) { missing.push(id); continue; }
     passages.push({ id, title: doc.title || doc.filename, year: doc.year, text });

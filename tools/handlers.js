@@ -666,15 +666,39 @@
 
   // ---- Tool: manage_header_footer (write) ----
   async function manage_header_footer(context, args) {
-    const section = context.document.sections.getFirst();
-    const area = args.area === "footer"
-      ? section.getFooter(Word.HeaderFooterType.primary)
-      : section.getHeader(Word.HeaderFooterType.primary);
-    area.clear();
-    const p = area.insertParagraph(args.text || "", Word.InsertLocation.start);
-    if (args.alignment) p.alignment = args.alignment;
+    context.document.sections.load("items");
     await context.sync();
-    return { ok: true, area: args.area };
+
+    const sections = context.document.sections.items;
+    const startIndex = args.skipFirstSection ? 1 : 0;
+
+    if (startIndex >= sections.length) {
+      return { error: "Dokumen hanya memiliki 1 section, tidak bisa skipFirstSection." };
+    }
+
+    for (let i = startIndex; i < sections.length; i++) {
+      const section = sections[i];
+      const area = args.area === "footer"
+        ? section.getFooter(Word.HeaderFooterType.primary)
+        : section.getHeader(Word.HeaderFooterType.primary);
+      area.clear();
+      const p = area.insertParagraph(args.text || "", Word.InsertLocation.start);
+      if (args.alignment) p.alignment = args.alignment;
+    }
+    await context.sync();
+
+    // Verifikasi: cek section pertama yang diproses benar-benar berisi teksnya
+    const checkSection = sections[startIndex];
+    const checkArea = args.area === "footer"
+      ? checkSection.getFooter(Word.HeaderFooterType.primary)
+      : checkSection.getHeader(Word.HeaderFooterType.primary);
+    checkArea.load("text");
+    await context.sync();
+    if (args.text && !checkArea.text.includes(args.text.slice(0, 20))) {
+      throw new Error("Verifikasi header/footer gagal — teks tidak ditemukan setelah diterapkan");
+    }
+
+    return { ok: true, area: args.area, sectionsApplied: sections.length - startIndex };
   }
 
   // ---- Tool: set_page_numbers (write) ----

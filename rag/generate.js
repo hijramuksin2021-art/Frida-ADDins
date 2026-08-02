@@ -78,7 +78,7 @@ async function generate_paragraph_from_source(input) {
   const instruction = input.instruction || input.source_query || "";
   if (!instruction) return { error: "instruction kosong" };
 
-  const all = store.list();
+  const all = store.list(input.workspace);
   if (!all.length) return { needsMoreEvidence: true, note: "Belum ada sumber terunggah." };
 
   const docIds = (input.document_ids && input.document_ids.length)
