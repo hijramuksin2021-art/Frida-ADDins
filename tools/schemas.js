@@ -451,7 +451,7 @@
         borders: {
           type: "string",
           enum: ["all", "outside", "inside", "academic", "none"],
-          description: "all = garis penuh di semua sel (grid); outside = tepi luar saja; inside = garis dalam saja; none = hapus semua garis; academic = gaya tabel jurnal ilmiah / three-line table (hanya garis atas, bawah header, dan bawah tabel, tanpa garis vertikal).",
+          description: "all = garis penuh di semua sel (grid); outside = tepi luar saja; inside = garis dalam saja; none = hapus semua garis; academic = gaya tabel jurnal ilmiah / three-line table (hanya garis atas, bawah header, dan bawah tabel, tanpa garis vertikal) PLUS otomatis merapikan tabel agar muat dalam margin halaman (kecuali fitToPageWidth di-set false).",
         },
         borderStyle: {
           type: "string",

@@ -875,6 +875,10 @@
     let autoFitApplied = null;
     let fitToPageApplied = null;
 
+    if (args.borders === "academic" && args.fitToPageWidth !== false) {
+      args.fitToPageWidth = true;
+    }
+
     if (args.fitToPageWidth && args.autoFit) {
       args.autoFit = false;
     }
