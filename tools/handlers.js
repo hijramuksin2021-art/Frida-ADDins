@@ -790,62 +790,48 @@
     const anchor = isSelection ? context.document.getSelection() : body;
     const loc = isSelection ? Word.InsertLocation.before : Word.InsertLocation.start;
 
-    let insertAfterAnchor = null;
-
+    let titleParagraph = null;
     if (args.title) {
-      const t = anchor.insertParagraph(args.title, loc);
-      t.styleBuiltIn = Word.BuiltInStyleName.heading1;
-      try { t.font.color = "#000000"; } catch(e) {}
-      insertAfterAnchor = t;
+      titleParagraph = anchor.insertParagraph(args.title, loc);
+      titleParagraph.styleBuiltIn = Word.BuiltInStyleName.heading1;
+      try { titleParagraph.font.color = "#000000"; } catch(e) {}
     }
 
-    try {
-      if (insertAfterAnchor) {
-        insertAfterAnchor.insertOoxml(tocOoxml(), Word.InsertLocation.after);
-      } else {
-        anchor.insertOoxml(tocOoxml(), loc);
-      }
-      await context.sync();
-      return { ok: true, method: "field", note: "Daftar isi (field) disisipkan. Klik kanan -> Update Field untuk mengisi." };
-    } catch (e) {
-      const errDetail = {
-        message: e.message || String(e),
-        code: e.code || null,
-        debugInfo: e.debugInfo ? {
-          errorLocation: e.debugInfo.errorLocation,
-          message: e.debugInfo.message,
-          surfaceType: e.debugInfo.surfaceType,
-        } : null,
-      };
-      console.error("insert_toc field method gagal:", JSON.stringify(errDetail));
+    const paras = context.document.body.paragraphs;
+    paras.load("items/text,items/styleBuiltIn");
+    await context.sync();
 
-      // FALLBACK: field TOC gagal — bangun daftar isi STATIS dari heading yang ada di dokumen
-      const paras = context.document.body.paragraphs;
-      paras.load("items/text,items/styleBuiltIn");
-      await context.sync();
-
-      const headings = paras.items.filter(p => /Heading/i.test(p.styleBuiltIn || ""));
-      if (!headings.length) {
-        return { ok: false, error: "Field TOC gagal disisipkan, dan tidak ditemukan heading di dokumen untuk daftar isi statis. Detail: " + JSON.stringify(errDetail) };
-      }
-
-      let currentAnchor = insertAfterAnchor || anchor;
-      let currentLoc = insertAfterAnchor ? Word.InsertLocation.after : loc;
-
-      for (const h of headings) {
-        const level = /Heading1/i.test(h.styleBuiltIn) ? 0 : /Heading2/i.test(h.styleBuiltIn) ? 1 : 2;
-        const entry = currentAnchor.insertParagraph("  ".repeat(level) + (h.text || "").trim(), currentLoc);
-        entry.styleBuiltIn = Word.BuiltInStyleName.normal;
-        
-        currentAnchor = entry;
-        currentLoc = Word.InsertLocation.after;
-      }
-      await context.sync();
-      return {
-        ok: true, method: "static-fallback",
-        note: "Metode field TOC gagal: " + JSON.stringify(errDetail) + " — disisipkan daftar isi statis dari " + headings.length + " heading. Catatan: nomor halaman tidak otomatis pada mode ini — beri tahu user."
-      };
+    const headings = paras.items.filter(p => /Heading/i.test(p.styleBuiltIn || "") && p !== titleParagraph);
+    if (!headings.length) {
+      return { ok: false, error: "Tidak ditemukan heading di dokumen untuk membuat daftar isi." };
     }
+
+    // Beri bookmark unik ke tiap heading ASLI di dokumen (supaya bisa dituju hyperlink)
+    headings.forEach((h, i) => {
+      try { h.insertBookmark("frida_toc_" + i); } catch(e) {}
+    });
+    await context.sync();
+
+    // Sisipkan entri daftar isi, masing-masing sebagai hyperlink internal ke bookmark-nya
+    const insertAnchor = titleParagraph || anchor;
+    let insertLoc = titleParagraph ? Word.InsertLocation.after : loc;
+    let last = insertAnchor;
+    
+    headings.forEach((h, i) => {
+      const level = /Heading1/i.test(h.styleBuiltIn) ? 0 : /Heading2/i.test(h.styleBuiltIn) ? 1 : 2;
+      const entryText = "  ".repeat(level) + (h.text || "").trim();
+      const p = last.insertParagraph(entryText, i === 0 ? insertLoc : Word.InsertLocation.after);
+      try { p.hyperlink = "#frida_toc_" + i; } catch(e) {}
+      last = p;
+    });
+    await context.sync();
+
+    return {
+      ok: true, method: "static-hyperlinked",
+      note: "Daftar isi disisipkan dengan " + headings.length + " entri (bisa diklik untuk lompat ke bagian terkait). " +
+            "Nomor halaman tidak otomatis — kalau butuh daftar isi yang otomatis update nomor halamannya, " +
+            "gunakan menu Word asli: References > Table of Contents, lalu pilih gaya bawaan."
+    };
   }
 
   // ---- Tool: manage_comments (write) ----
