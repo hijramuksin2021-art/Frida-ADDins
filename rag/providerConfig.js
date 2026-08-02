@@ -20,7 +20,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const FILE = path.join(__dirname, "..", "provider.local.json");
+const FILE = path.join(__dirname, "..", "persistent-data", "provider.local.json");
 
 // Daftar provider yang dikenal. 'custom' = OpenAI-compatible (9Router/Aerolink/proxy).
 const PROVIDERS = ["anthropic", "openai", "gemini", "custom"];
@@ -194,7 +194,11 @@ function setProvider(id, patch) {
 }
 
 function persist() {
-  try { fs.writeFileSync(FILE, JSON.stringify(active, null, 2)); } catch (_) {}
+  try {
+    const dir = path.dirname(FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(FILE, JSON.stringify(active, null, 2));
+  } catch (_) {}
 }
 
 function keyHint(k) { return k ? k.slice(0, 4) + "…" + k.slice(-2) : null; }
