@@ -38,7 +38,11 @@
       <button id="undo" class="undo" style="display:none">↩️ Undo perubahan terakhir</button>
       <div id="audit" class="audit"></div>
       <!-- QUICK PROMPTS -->
-      <div id="quickPrompts" class="quick-prompts"></div>
+      <div class="quick-prompts-wrapper" id="qpWrapper">
+        <button class="qp-nav qp-nav-left" id="qpNavLeft" aria-label="Geser kiri">❮</button>
+        <div id="quickPrompts" class="quick-prompts"></div>
+        <button class="qp-nav qp-nav-right" id="qpNavRight" aria-label="Geser kanan">❯</button>
+      </div>
 
       <!-- SELECTION CONTEXT -->
       <div id="selectionContext" class="selection-context hidden">

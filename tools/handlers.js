@@ -683,41 +683,65 @@
   // tak tersedia di host, fallback ke teks biasa + catatan.
   // position: 'top' = header (nomor di atas), 'bottom' = footer (default).
   async function set_page_numbers(context, args) {
-    const section = context.document.sections.getFirst();
-    const atTop = args.position === "top";
-    const area = atTop
-      ? section.getHeader(Word.HeaderFooterType.primary)
-      : section.getFooter(Word.HeaderFooterType.primary);
-    area.clear();
-    const p = area.insertParagraph("", Word.InsertLocation.start);
-    p.alignment = args.alignment || "Centered";
+    context.document.sections.load("items");
     await context.sync();
 
-    const canField =
-      typeof Word !== "undefined" &&
-      Word.FieldType && p.getRange && typeof p.getRange().insertField === "function";
+    const sections = context.document.sections.items;
+    const startIndex = args.skipFirstSection ? 1 : 0;
+    const atTop = args.position === "top";
+    const failedSections = [];
+    let methodUsed = "field";
 
-    if (canField) {
-      // sisipkan field PAGE (dan NUMPAGES utk "x of y") ke dalam paragraf footer
-      const r0 = p.getRange(Word.RangeLocation.start);
-      r0.insertField(Word.InsertLocation.start, Word.FieldType.page);
-      if (args.format === "page_x_of_y") {
-        const rEnd = p.getRange(Word.RangeLocation.end);
-        rEnd.insertText(" of ", Word.InsertLocation.end);
-        rEnd.insertField(Word.InsertLocation.end, Word.FieldType.numPages);
+    for (let i = startIndex; i < sections.length; i++) {
+      const section = sections[i];
+      const area = atTop
+        ? section.getHeader(Word.HeaderFooterType.primary)
+        : section.getFooter(Word.HeaderFooterType.primary);
+      area.clear();
+      const p = area.insertParagraph("", Word.InsertLocation.start);
+      p.alignment = args.alignment || "Centered";
+      await context.sync();
+
+      const canField =
+        typeof Word !== "undefined" &&
+        Word.FieldType && p.getRange && typeof p.getRange().insertField === "function";
+
+      if (canField) {
+        const r0 = p.getRange(Word.RangeLocation.start);
+        r0.insertField(Word.InsertLocation.start, Word.FieldType.page);
+        if (args.format === "page_x_of_y") {
+          const rEnd = p.getRange(Word.RangeLocation.end);
+          rEnd.insertText(" of ", Word.InsertLocation.end);
+          rEnd.insertField(Word.InsertLocation.end, Word.FieldType.numPages);
+        }
+      } else {
+        methodUsed = "text_fallback";
+        p.insertText(args.format === "page_x_of_y" ? "Halaman ? dari ?" : "Halaman ?",
+                     Word.InsertLocation.start);
       }
       await context.sync();
-      return { ok: true, position: atTop ? "top" : "bottom",
-               format: args.format || "plain", method: "field" };
+
+      // Verifikasi
+      area.paragraphs.load("items");
+      await context.sync();
+      if (!area.paragraphs.items || area.paragraphs.items.length === 0) {
+        failedSections.push(i + 1);
+      }
     }
 
-    // Fallback: tanpa API field — tulis penanda agar pengguna tahu host tak mendukung.
-    p.insertText(args.format === "page_x_of_y" ? "Halaman ? dari ?" : "Halaman ?",
-                 Word.InsertLocation.start);
-    await context.sync();
-    return { ok: true, position: atTop ? "top" : "bottom",
-             format: args.format || "plain", method: "text_fallback",
-             note: "Host tidak mendukung field otomatis; ditulis teks penanda." };
+    if (failedSections.length > 0) {
+      const msg = "Sebagian section gagal disisipkan nomor halaman: " + failedSections.join(", ");
+      if (failedSections.length === sections.length - startIndex) {
+        return { ok: false, error: "Gagal menyisipkan nomor halaman di seluruh section target." };
+      }
+      return { ok: true, partial: true, error: msg };
+    }
+
+    const ret = { ok: true, position: atTop ? "top" : "bottom", format: args.format || "plain", method: methodUsed };
+    if (methodUsed === "text_fallback") {
+      ret.note = "Host tidak mendukung field otomatis; ditulis teks penanda.";
+    }
+    return ret;
   }
 
   // ---- Tool: insert_image (write) ----

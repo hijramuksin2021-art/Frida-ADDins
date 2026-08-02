@@ -599,6 +599,48 @@ function initQuickPrompts() {
     };
     container.appendChild(btn);
   });
+
+  var wrapper = document.getElementById("qpWrapper");
+  var btnLeft = document.getElementById("qpNavLeft");
+  var btnRight = document.getElementById("qpNavRight");
+
+  if (wrapper && btnLeft && btnRight) {
+    function updateScrollState() {
+      var maxScroll = container.scrollWidth - container.clientWidth;
+      var currentScroll = container.scrollLeft;
+
+      if (maxScroll > 0) {
+        if (currentScroll > 0) wrapper.classList.add("fade-left");
+        else wrapper.classList.remove("fade-left");
+
+        // Math.ceil is used because scrollLeft can be fractional on high DPI screens
+        if (Math.ceil(currentScroll) < maxScroll) wrapper.classList.add("fade-right");
+        else wrapper.classList.remove("fade-right");
+      } else {
+        wrapper.classList.remove("fade-left");
+        wrapper.classList.remove("fade-right");
+      }
+    }
+
+    container.addEventListener("scroll", updateScrollState);
+    window.addEventListener("resize", updateScrollState);
+    setTimeout(updateScrollState, 100); // Trigger after layout
+
+    btnLeft.addEventListener("click", function() {
+      container.scrollBy({ left: -150, behavior: "smooth" });
+    });
+    
+    btnRight.addEventListener("click", function() {
+      container.scrollBy({ left: 150, behavior: "smooth" });
+    });
+
+    container.addEventListener("wheel", function(e) {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        container.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+  }
 }
 
 // =====================================================================

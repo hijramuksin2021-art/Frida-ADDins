@@ -321,6 +321,11 @@
           default: "plain",
           description: "plain = '1'; page_x_of_y = '1 of 10'.",
         },
+        skipFirstSection: {
+          type: "boolean",
+          default: false,
+          description: "Jika true, abaikan section pertama (biasanya halaman sampul) dan mulai penomoran halaman dari section kedua. Gunakan bila diminta 'tanpa nomor di cover/sampul' atau 'mulai dari bab pendahuluan'.",
+        },
       },
     },
   };
