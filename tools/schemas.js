@@ -444,6 +444,10 @@
       type: "object",
       properties: {
         tableIndex: { type: "integer", default: 0, description: "Indeks tabel di dokumen (0 = pertama)." },
+        fitToPageWidth: {
+          type: "boolean",
+          description: "Paksa lebar TOTAL tabel supaya pas di dalam margin halaman (kolom di-skala proporsional, bukan dipotong). Gunakan khusus untuk tabel yang di-paste dari Excel/sumber lain dengan kolom sangat lebar yang keluar dari margin kertas. BEDA dari autoFit (autoFit = lebar ikut panjang teks isi; fitToPageWidth = lebar total dipaksa pas margin, dipakai kalau tabel sudah/akan melebihi margin).",
+        },
         borders: {
           type: "string",
           enum: ["all", "outside", "inside", "academic", "none"],

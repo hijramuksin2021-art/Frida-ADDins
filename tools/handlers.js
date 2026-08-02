@@ -873,7 +873,13 @@
 
     let bordersApplied = null;
     let autoFitApplied = null;
-    if (args.borders || args.autoFit) {
+    let fitToPageApplied = null;
+
+    if (args.fitToPageWidth && args.autoFit) {
+      args.autoFit = false;
+    }
+
+    if (args.borders || args.autoFit || args.fitToPageWidth) {
       const range = table.getRange();
       const o = range.getOoxml();
       await context.sync();
@@ -888,7 +894,11 @@
         newXml = applyTblBorders(newXml, args.borders, val, sz, color);
         bordersApplied = args.borders;
       }
-      if (args.autoFit) {
+      
+      if (args.fitToPageWidth) {
+        newXml = applyFitToPageWidth(newXml);
+        fitToPageApplied = true;
+      } else if (args.autoFit) {
         let colMaxChars = null;
         try {
           table.load("values");
@@ -917,8 +927,8 @@
       }
     }
 
-    return { ok: true, tableIndex: idx, borders: bordersApplied, autoFit: autoFitApplied,
-             style: args.style || null, method: (bordersApplied || autoFitApplied) ? "ooxml" : "style" };
+    return { ok: true, tableIndex: idx, borders: bordersApplied, autoFit: autoFitApplied, fitToPageWidth: fitToPageApplied,
+             style: args.style || null, method: (bordersApplied || autoFitApplied || fitToPageApplied) ? "ooxml" : "style" };
   }
 
   // ---- Helper: insertRichItalicRange (R5) — sisipkan teks dgn *italic* ke range ----
@@ -1119,6 +1129,102 @@
       return tblPrXml.slice(0, earliestIdx) + newChildXml + tblPrXml.slice(earliestIdx);
     }
     return tblPrXml.replace(/<\/w:tblPr>/, newChildXml + "</w:tblPr>");
+  }
+
+  function applyFitToPageWidth(xml) {
+    let totalWidth = 0;
+    const colWidths = [];
+    const tblGridMatch = xml.match(/<w:tblGrid\b[^>]*>([\s\S]*?)<\/w:tblGrid>/);
+    if (tblGridMatch) {
+      const gridInner = tblGridMatch[1];
+      const gridCols = gridInner.match(/<w:gridCol\b[^>]*\/>/g) || [];
+      for (const col of gridCols) {
+        const wMatch = col.match(/w:w="(\d+)"/);
+        const w = wMatch ? parseInt(wMatch[1], 10) : 0;
+        colWidths.push(w);
+        totalWidth += w;
+      }
+    }
+
+    if (totalWidth === 0 || colWidths.length === 0) return xml;
+
+    let pctLeft = 5000;
+    const colPcts = [];
+    for (let i = 0; i < colWidths.length; i++) {
+      let pct;
+      if (i === colWidths.length - 1) {
+        pct = pctLeft;
+      } else {
+        pct = Math.round((colWidths[i] / totalWidth) * 5000);
+        pctLeft -= pct;
+      }
+      colPcts.push(pct);
+    }
+
+    xml = xml.replace(/<w:tblW\b[^>]*\/>|<w:tblW\b[^>]*>[\s\S]*?<\/w:tblW>/, "");
+    xml = xml.replace(/<w:tblLayout\b[^>]*\/>|<w:tblLayout\b[^>]*>[\s\S]*?<\/w:tblLayout>/, "");
+    
+    xml = xml.replace(/<w:tblPr\b[^>]*\/>|<w:tblPr\b[^>]*>[\s\S]*?<\/w:tblPr>/, (tblPrMatch) => {
+      let tblPrXml = tblPrMatch;
+      if (tblPrXml.endsWith("/>")) tblPrXml = tblPrXml.replace(/\/>$/, "></w:tblPr>");
+      
+      const afterAnchorsTblW = [
+        /<w:jc\b[^>]*\/>/,
+        /<w:tblCellSpacing\b[^>]*\/>/,
+        /<w:tblInd\b[^>]*\/>/,
+        /<w:tblBorders\b[^>]*\/>/,
+        /<w:tblBorders\b[^>]*>[\s\S]*?<\/w:tblBorders>/,
+        /<w:shd\b[^>]*\/>/,
+        /<w:tblLayout\b[^>]*\/>/,
+        /<w:tblCellMar\b[^>]*>[\s\S]*?<\/w:tblCellMar>/,
+        /<w:tblLook\b[^>]*\/>/,
+        /<w:tblCaption\b[^>]*\/>/,
+        /<w:tblDescription\b[^>]*\/>/
+      ];
+      tblPrXml = insertTblPrChild(tblPrXml, '<w:tblW w:w="5000" w:type="pct"/>', afterAnchorsTblW);
+      
+      const afterAnchorsLayout = [
+        /<w:tblCellMar\b[^>]*>[\s\S]*?<\/w:tblCellMar>/,
+        /<w:tblLook\b[^>]*\/>/,
+        /<w:tblCaption\b[^>]*\/>/,
+        /<w:tblDescription\b[^>]*\/>/
+      ];
+      tblPrXml = insertTblPrChild(tblPrXml, '<w:tblLayout w:type="autofit"/>', afterAnchorsLayout);
+      return tblPrXml;
+    });
+
+    xml = xml.replace(/<w:tr(\s|>)[^>]*>([\s\S]*?)<\/w:tr>/g, (trFull) => {
+      const startTr = trFull.indexOf('>') + 1;
+      const trTag = trFull.substring(0, startTr);
+      let trInner = trFull.substring(startTr, trFull.length - 7);
+      
+      let colIdx = 0;
+      const newTrInner = trInner.replace(/<w:tc(\s|>)[^>]*>([\s\S]*?)<\/w:tc>/g, (tcFull) => {
+        const startTc = tcFull.indexOf('>') + 1;
+        const tcTag = tcFull.substring(0, startTc);
+        let inner = tcFull.substring(startTc, tcFull.length - 7);
+        
+        let pctVal = colPcts[colIdx] != null ? colPcts[colIdx] : (5000 / colPcts.length);
+        let pctW = `<w:tcW w:w="${pctVal}" w:type="pct"/>`;
+        colIdx++;
+        
+        if (!/<w:tcPr(\s|>)/.test(inner)) {
+          inner = "<w:tcPr>" + pctW + "</w:tcPr>" + inner;
+        } else {
+          inner = inner.replace(/<w:tcPr\b[^>]*\/>|<w:tcPr\b[^>]*>([\s\S]*?)<\/w:tcPr>/, (tcPrMatch) => {
+            let tcPrXml = tcPrMatch;
+            if (tcPrXml.endsWith("/>")) tcPrXml = tcPrXml.replace(/\/>$/, "></w:tcPr>");
+            
+            tcPrXml = tcPrXml.replace(/<w:tcW\b[^>]*\/>|<w:tcW\b[^>]*>[\s\S]*?<\/w:tcW>/, "");
+            return tcPrXml.replace(/<w:tcPr(\s[^>]*)?>/, (m) => m + pctW);
+          });
+        }
+        return tcTag + inner + "</w:tc>";
+      });
+      return trTag + newTrInner + "</w:tr>";
+    });
+
+    return xml;
   }
 
   function applyTblAutoFit(xml, colMaxChars) {
