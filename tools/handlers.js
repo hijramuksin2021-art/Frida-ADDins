@@ -791,14 +791,40 @@
       : body.getRange(Word.RangeLocation.start);
     const loc = args.location === "selection"
       ? Word.InsertLocation.before : Word.InsertLocation.start;
+
     if (args.title) {
       const t = anchor.insertParagraph(args.title, loc);
       t.styleBuiltIn = Word.BuiltInStyleName.heading1;
       try { t.font.color = "#000000"; } catch(e) {}
     }
-    body.insertOoxml(tocOoxml(), loc);
-    await context.sync();
-    return { ok: true, note: "Daftar isi disisipkan. Klik kanan -> Update Field untuk mengisi." };
+
+    try {
+      body.insertOoxml(tocOoxml(), loc);
+      await context.sync();
+      return { ok: true, method: "field", note: "Daftar isi (field) disisipkan. Klik kanan -> Update Field untuk mengisi." };
+    } catch (e) {
+      // FALLBACK: field TOC gagal — bangun daftar isi STATIS dari heading yang ada di dokumen,
+      // supaya user tetap dapat hasil yang berguna, bukan halaman kosong.
+      const paras = context.document.body.paragraphs;
+      paras.load("items/text,items/styleBuiltIn");
+      await context.sync();
+
+      const headings = paras.items.filter(p => /Heading/i.test(p.styleBuiltIn || ""));
+      if (!headings.length) {
+        return { ok: false, error: "Field TOC gagal disisipkan, dan tidak ditemukan heading di dokumen untuk daftar isi statis. Detail: " + (e.message || e) };
+      }
+
+      for (const h of headings) {
+        const level = /Heading1/i.test(h.styleBuiltIn) ? 0 : /Heading2/i.test(h.styleBuiltIn) ? 1 : 2;
+        const entry = anchor.insertParagraph("  ".repeat(level) + (h.text || "").trim(), loc);
+        entry.styleBuiltIn = Word.BuiltInStyleName.normal;
+      }
+      await context.sync();
+      return {
+        ok: true, method: "static-fallback",
+        note: "Metode field TOC gagal (" + (e.message || e) + "), disisipkan daftar isi STATIS dari " + headings.length + " heading yang ditemukan. Catatan: nomor halaman tidak otomatis pada mode ini — beri tahu user."
+      };
+    }
   }
 
   // ---- Tool: manage_comments (write) ----
@@ -1422,18 +1448,13 @@
 
   // --- util OOXML untuk field TOC ---
   function tocOoxml() {
-    const instr = 'TOC \\\\o "1-3" \\\\h \\\\z \\\\u';
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">' +
-      '<pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">' +
-      '<pkg:xmlData>' +
-      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      '<w:body><w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+    const instr = 'TOC \\o "1-3" \\h \\z \\u';
+    return '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
       '<w:r><w:instrText xml:space="preserve"> ' + instr + ' </w:instrText></w:r>' +
       '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
       '<w:r><w:t>Klik kanan untuk memperbarui daftar isi.</w:t></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:body></w:document>' +
-      '</pkg:xmlData></pkg:part></pkg:package>';
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
   }
 
   // ---- Tool: update_all_citations (R5) — perbarui semua sitasi ke gaya baru ----
