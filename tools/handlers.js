@@ -790,33 +790,47 @@
     const anchor = isSelection ? context.document.getSelection() : body;
     const loc = isSelection ? Word.InsertLocation.before : Word.InsertLocation.start;
 
-    let currentAnchor = anchor;
-    let currentLoc = loc;
+    let insertAfterAnchor = null;
 
     if (args.title) {
-      const t = currentAnchor.insertParagraph(args.title, currentLoc);
+      const t = anchor.insertParagraph(args.title, loc);
       t.styleBuiltIn = Word.BuiltInStyleName.heading1;
       try { t.font.color = "#000000"; } catch(e) {}
-      
-      currentAnchor = t;
-      currentLoc = Word.InsertLocation.after;
+      insertAfterAnchor = t;
     }
 
     try {
-      currentAnchor.insertOoxml(tocOoxml(), currentLoc);
+      if (insertAfterAnchor) {
+        insertAfterAnchor.insertOoxml(tocOoxml(), Word.InsertLocation.after);
+      } else {
+        anchor.insertOoxml(tocOoxml(), loc);
+      }
       await context.sync();
       return { ok: true, method: "field", note: "Daftar isi (field) disisipkan. Klik kanan -> Update Field untuk mengisi." };
     } catch (e) {
-      // FALLBACK: field TOC gagal — bangun daftar isi STATIS dari heading yang ada di dokumen,
-      // supaya user tetap dapat hasil yang berguna, bukan halaman kosong.
+      const errDetail = {
+        message: e.message || String(e),
+        code: e.code || null,
+        debugInfo: e.debugInfo ? {
+          errorLocation: e.debugInfo.errorLocation,
+          message: e.debugInfo.message,
+          surfaceType: e.debugInfo.surfaceType,
+        } : null,
+      };
+      console.error("insert_toc field method gagal:", JSON.stringify(errDetail));
+
+      // FALLBACK: field TOC gagal — bangun daftar isi STATIS dari heading yang ada di dokumen
       const paras = context.document.body.paragraphs;
       paras.load("items/text,items/styleBuiltIn");
       await context.sync();
 
       const headings = paras.items.filter(p => /Heading/i.test(p.styleBuiltIn || ""));
       if (!headings.length) {
-        return { ok: false, error: "Field TOC gagal disisipkan, dan tidak ditemukan heading di dokumen untuk daftar isi statis. Detail: " + (e.message || e) };
+        return { ok: false, error: "Field TOC gagal disisipkan, dan tidak ditemukan heading di dokumen untuk daftar isi statis. Detail: " + JSON.stringify(errDetail) };
       }
+
+      let currentAnchor = insertAfterAnchor || anchor;
+      let currentLoc = insertAfterAnchor ? Word.InsertLocation.after : loc;
 
       for (const h of headings) {
         const level = /Heading1/i.test(h.styleBuiltIn) ? 0 : /Heading2/i.test(h.styleBuiltIn) ? 1 : 2;
@@ -829,7 +843,7 @@
       await context.sync();
       return {
         ok: true, method: "static-fallback",
-        note: "Metode field TOC gagal (" + (e.message || e) + "), disisipkan daftar isi STATIS dari " + headings.length + " heading yang ditemukan. Catatan: nomor halaman tidak otomatis pada mode ini — beri tahu user."
+        note: "Metode field TOC gagal: " + JSON.stringify(errDetail) + " — disisipkan daftar isi statis dari " + headings.length + " heading. Catatan: nomor halaman tidak otomatis pada mode ini — beri tahu user."
       };
     }
   }
