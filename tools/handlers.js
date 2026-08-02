@@ -786,20 +786,24 @@
   // (beda dgn footer). Pengguna klik kanan -> Update Field utk mengisi.
   async function insert_toc(context, args) {
     const body = context.document.body;
-    const anchor = args.location === "selection"
-      ? context.document.getSelection()
-      : body.getRange(Word.RangeLocation.start);
-    const loc = args.location === "selection"
-      ? Word.InsertLocation.before : Word.InsertLocation.start;
+    const isSelection = args.location === "selection";
+    const anchor = isSelection ? context.document.getSelection() : body;
+    const loc = isSelection ? Word.InsertLocation.before : Word.InsertLocation.start;
+
+    let currentAnchor = anchor;
+    let currentLoc = loc;
 
     if (args.title) {
-      const t = anchor.insertParagraph(args.title, loc);
+      const t = currentAnchor.insertParagraph(args.title, currentLoc);
       t.styleBuiltIn = Word.BuiltInStyleName.heading1;
       try { t.font.color = "#000000"; } catch(e) {}
+      
+      currentAnchor = t;
+      currentLoc = Word.InsertLocation.after;
     }
 
     try {
-      body.insertOoxml(tocOoxml(), loc);
+      currentAnchor.insertOoxml(tocOoxml(), currentLoc);
       await context.sync();
       return { ok: true, method: "field", note: "Daftar isi (field) disisipkan. Klik kanan -> Update Field untuk mengisi." };
     } catch (e) {
@@ -816,8 +820,11 @@
 
       for (const h of headings) {
         const level = /Heading1/i.test(h.styleBuiltIn) ? 0 : /Heading2/i.test(h.styleBuiltIn) ? 1 : 2;
-        const entry = anchor.insertParagraph("  ".repeat(level) + (h.text || "").trim(), loc);
+        const entry = currentAnchor.insertParagraph("  ".repeat(level) + (h.text || "").trim(), currentLoc);
         entry.styleBuiltIn = Word.BuiltInStyleName.normal;
+        
+        currentAnchor = entry;
+        currentLoc = Word.InsertLocation.after;
       }
       await context.sync();
       return {
