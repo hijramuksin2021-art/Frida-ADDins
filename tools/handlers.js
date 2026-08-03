@@ -171,7 +171,7 @@
   // ---- Tool: replace_text (write) ----
   async function replace_text(context, args) {
     const find = String(args.find || "");
-    const replaceRaw = String(args.replace || "");
+    const replaceRaw = String(args.replace || "").replace(/\\n/g, "\n");
     if (!find.trim()) return { error: "find kosong" };
 
     const { clean: replace, segments } = extractMarkdownFormatting(replaceRaw);
@@ -370,12 +370,18 @@
 
   // ---- Tool: insert_paragraph (write; sisip teks baru) ----
   async function insert_paragraph(context, args) {
-    const text = (args.text || "").trim();
+    const text = (args.text || "").trim().replace(/\\n/g, "\n");
     if (!text) return { error: "text kosong" };
     const parts = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
     if (!parts.length) return { error: "text kosong" };
     const loc = args.location || "end";
     const body = context.document.body;
+
+    function detectStructureType(line) {
+      if (/^BAB\s+[IVXLCDM0-9]+/i.test(line.trim())) return "bab";
+      if (/^\d+\.\d+(\.\d+)?\s+\S/.test(line.trim())) return "subbab";
+      return "body";
+    }
 
     const applyStyleAndDefaults = async (p, cleanText, segments) => {
       await applyExtractedFormatting(context, p, cleanText, segments);
@@ -394,6 +400,36 @@
       }
     };
 
+    const processInsertedParagraph = async (p, clean, segments) => {
+      const structureType = args.style ? null : detectStructureType(clean);
+      if (structureType === "bab") {
+        p.styleBuiltIn = Word.BuiltInStyleName.heading1;
+        if (args.__hasGuideline !== true) {
+          try {
+            p.font.name = "Times New Roman";
+            p.font.size = 12;
+            p.font.bold = true;
+            p.font.color = "#000000";
+            p.alignment = Word.Alignment.centered;
+          } catch(e) {}
+          try { p.insertText(clean.toUpperCase(), Word.InsertLocation.replace); } catch(e) {}
+        }
+      } else if (structureType === "subbab") {
+        p.styleBuiltIn = Word.BuiltInStyleName.heading2;
+        if (args.__hasGuideline !== true) {
+          try {
+            p.font.name = "Times New Roman";
+            p.font.size = 12;
+            p.font.bold = true;
+            p.font.color = "#000000";
+            p.alignment = Word.Alignment.left;
+          } catch(e) {}
+        }
+      } else {
+        await applyStyleAndDefaults(p, clean, segments);
+      }
+    };
+
     let inserted = 0;
 
     if (loc === "end" || loc === "start") {
@@ -402,7 +438,7 @@
       for (const t of seq) {
         const { clean, segments } = extractMarkdownFormatting(t);
         const p = body.insertParagraph(clean, where);
-        await applyStyleAndDefaults(p, clean, segments);
+        await processInsertedParagraph(p, clean, segments);
         inserted++;
       }
     } else if (loc === "after_selection") {
@@ -410,7 +446,7 @@
       for (const t of parts) {
         const { clean, segments } = extractMarkdownFormatting(t);
         anchor = anchor.insertParagraph(clean, Word.InsertLocation.after);
-        await applyStyleAndDefaults(anchor, clean, segments);
+        await processInsertedParagraph(anchor, clean, segments);
         inserted++;
       }
     } else if (loc === "after_index" || loc === "before_index") {
@@ -422,14 +458,14 @@
         for (const t of parts) {
           const { clean, segments } = extractMarkdownFormatting(t);
           anchor = anchor.insertParagraph(clean, Word.InsertLocation.after);
-          await applyStyleAndDefaults(anchor, clean, segments);
+          await processInsertedParagraph(anchor, clean, segments);
           inserted++;
         }
       } else {
         for (const t of parts) {
           const { clean, segments } = extractMarkdownFormatting(t);
           const p = target.insertParagraph(clean, Word.InsertLocation.before);
-          await applyStyleAndDefaults(p, clean, segments);
+          await processInsertedParagraph(p, clean, segments);
           inserted++;
         }
       }
