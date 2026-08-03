@@ -385,6 +385,7 @@
         try {
           p.font.size = 12;
           p.font.name = "Times New Roman";
+          p.font.bold = false;
           p.spaceBefore = 0;
           p.spaceAfter = 0;
           p.firstLineIndent = 28.35;
@@ -908,9 +909,19 @@
 
     let titleParagraph = null;
     if (args.title) {
-      titleParagraph = anchor.insertParagraph(args.title, loc);
+      let tText = args.title;
+      if (args.__hasGuideline !== true) tText = tText.toUpperCase();
+      titleParagraph = anchor.insertParagraph(tText, loc);
       titleParagraph.styleBuiltIn = Word.BuiltInStyleName.heading1;
-      try { titleParagraph.font.color = "#000000"; } catch(e) {}
+      try { 
+        titleParagraph.font.color = "#000000"; 
+        if (args.__hasGuideline !== true) {
+          titleParagraph.font.name = "Times New Roman";
+          titleParagraph.font.size = 12;
+          titleParagraph.font.bold = true;
+          titleParagraph.alignment = Word.Alignment.centered;
+        }
+      } catch(e) {}
     }
 
     const paras = context.document.body.paragraphs;
@@ -1205,10 +1216,20 @@
     cc.title = "FRIDA Bibliography";
 
     // Isi content control
-    const h = cc.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.end);
+    let tText = args.title || "Daftar Pustaka";
+    if (args.__hasGuideline !== true) tText = tText.toUpperCase();
+    const h = cc.insertParagraph(tText, Word.InsertLocation.end);
     try { 
       h.styleBuiltIn = Word.BuiltInStyleName.heading1; 
-      try { h.font.color = "#000000"; } catch(e) {}
+      try { 
+        h.font.color = "#000000"; 
+        if (args.__hasGuideline !== true) {
+          h.font.name = "Times New Roman";
+          h.font.size = 12;
+          h.font.bold = true;
+          h.alignment = Word.Alignment.centered;
+        }
+      } catch(e) {}
     } catch (e) {}
 
     entries.forEach((e) => {
@@ -1653,8 +1674,21 @@
             // Clear dan rebuild bibliography inside CC
             cc.clear();
 
-            const t = cc.insertParagraph(args.title || "Daftar Pustaka", Word.InsertLocation.start);
-            try { t.styleBuiltIn = Word.BuiltInStyleName.heading1; t.font.color = "#000000"; } catch (e) {}
+            let tText = args.title || "Daftar Pustaka";
+            if (args.__hasGuideline !== true) tText = tText.toUpperCase();
+            const t = cc.insertParagraph(tText, Word.InsertLocation.start);
+            try { 
+              t.styleBuiltIn = Word.BuiltInStyleName.heading1; 
+              try { 
+                t.font.color = "#000000"; 
+                if (args.__hasGuideline !== true) {
+                  t.font.name = "Times New Roman";
+                  t.font.size = 12;
+                  t.font.bold = true;
+                  t.alignment = Word.Alignment.centered;
+                }
+              } catch(e) {}
+            } catch (e) {}
 
             for (const entry of data.entries) {
               const p = cc.insertParagraph("", Word.InsertLocation.end);

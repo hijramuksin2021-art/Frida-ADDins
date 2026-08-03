@@ -301,6 +301,7 @@ const AGENT_SYSTEM_PROMPT_BASE = [
   "- SITASI ('sisipkan sitasi APA7', 'kasih sitasi') → insert_citation dengan source_id (dapatkan source_id dari hasil search_uploaded_sources/generate_paragraph_from_source/resolve_source — JANGAN menulis nama/tahun sendiri). 'buat daftar pustaka'/'bibliography' → insert_bibliography. Jika tool sitasi mengembalikan error metadata kosong, beri tahu pengguna untuk melengkapi/mengoreksi metadata sumber di panel Sumber.",
   "Jika sebuah tool mengembalikan error, JANGAN mengulang tool yang sama berkali-kali; baca pesan error, perbaiki argumen, atau laporkan ke pengguna dengan teks.",
   "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",
+  "   - PENTING: JANGAN PERNAH mendeskripsikan hasil pekerjaan (format, perubahan dokumen, dst) melebihi apa yang BENAR-BENAR dilakukan lewat tool call yang sukses di respons ini. Kalau hanya 1 aksi kecil yang berhasil dijalankan (misal cuma indentasi), laporkan HANYA itu — JANGAN menambahkan klaim tentang aspek lain (font, ukuran, bold, dst) yang TIDAK ada tool call pendukungnya di respons yang sama. Kalau user minta banyak hal sekaligus tapi baru sebagian yang berhasil dieksekusi, katakan dengan jelas bagian mana yang sudah dan mana yang BELUM (dan kenapa, kalau tahu alasannya), jangan menyamarkannya seolah semua beres.",
   "Jangan mengubah bagian yang tidak diminta. Pertahankan bahasa dokumen.",
   "Jika instruksi ambigu atau berisiko (mis. mengganti di seluruh dokumen), tetap usulkan tool call yang paling masuk akal; konfirmasi keamanan ditangani oleh aplikasi klien.",
   "ATURAN FORMATTING DEFAULT:",
@@ -400,8 +401,43 @@ async function runAgentServerLoop(messages, workspace) {
     const toolUses = (data.content || []).filter((b) => b.type === "tool_use");
     if (!toolUses.length) return { done: true, content: data.content, messages };
 
+    // Validasi parameter tiap tool berdasar skema (menolak parameter siluman)
+    const invalidResults = [];
+    const validToolUses = [];
+    toolUses.forEach((tu) => {
+      let errMsg = null;
+      const schemaObj = TOOL_SCHEMAS.find(t => t.name === tu.name);
+      if (schemaObj && schemaObj.input_schema && schemaObj.input_schema.properties) {
+        const validKeys = Object.keys(schemaObj.input_schema.properties);
+        for (const k of Object.keys(tu.input || {})) {
+          if (!validKeys.includes(k)) {
+            errMsg = `Parameter '${k}' TIDAK DIKENAL untuk tool '${tu.name}'. Yang tersedia HANYA: ${validKeys.join(", ")}.`;
+            break;
+          }
+        }
+      }
+      if (errMsg) {
+        invalidResults.push({
+          type: "tool_result", tool_use_id: tu.id, is_error: true, content: JSON.stringify({ error: errMsg })
+        });
+      } else {
+        validToolUses.push(tu);
+      }
+    });
+
+    if (invalidResults.length > 0) {
+      // Anthropics mewajibkan semua tool_use dalam 1 respons dibalas.
+      // Batalkan eksekusi, kembalikan error untuk yang invalid, dan error pembatalan untuk yang valid.
+      const allResults = invalidResults;
+      validToolUses.forEach(tu => {
+         allResults.push({ type: "tool_result", tool_use_id: tu.id, is_error: true, content: JSON.stringify({ error: "Dibatalkan karena ada tool lain dalam batch yang parameter-nya tidak valid. Perbaiki parameter tool yang salah lalu ulangi semuanya." }) });
+      });
+      messages.push({ role: "user", content: allResults });
+      continue; 
+    }
+
     const serverTU = [], clientTU = [];
-    toolUses.forEach((tu) => (runtimeOf(tu.name) === "server" ? serverTU : clientTU).push(tu));
+    validToolUses.forEach((tu) => (runtimeOf(tu.name) === "server" ? serverTU : clientTU).push(tu));
 
     if (clientTU.length === 0) {
       // semua server-tool -> eksekusi & lanjut loop tanpa ke klien
