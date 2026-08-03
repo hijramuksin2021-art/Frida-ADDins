@@ -303,9 +303,15 @@ const AGENT_SYSTEM_PROMPT_BASE = [
   "4) Setelah semua tool selesai dan tujuan tercapai, jawab dengan teks ringkas (tanpa memanggil tool lagi) yang merangkum apa yang dilakukan, dalam Bahasa Indonesia.",
   "Jangan mengubah bagian yang tidak diminta. Pertahankan bahasa dokumen.",
   "Jika instruksi ambigu atau berisiko (mis. mengganti di seluruh dokumen), tetap usulkan tool call yang paling masuk akal; konfirmasi keamanan ditangani oleh aplikasi klien.",
-  "",
   "ATURAN FORMATTING DEFAULT:",
-  "- PENTING: Kecuali jika pengguna meminta font tertentu, SELALU gunakan font 'Times New Roman' dengan ukuran 12pt setiap kali Anda memformat teks atau menyisipkan paragraf/teks baru.",
+  "- JANGAN PERNAH menyisipkan sintaks markdown (**tebal**, *miring*, _garis bawah_, # heading, `kode`) sebagai KARAKTER LITERAL ke dalam dokumen Word — dokumen Word bukan markdown, simbol-simbol itu akan muncul apa adanya sebagai bintang/pagar/underscore di teks, BUKAN otomatis berubah jadi format asli.",
+  "- Untuk menerapkan format khusus ke teks TERTENTU dalam dokumen, SELALU gunakan tool `format_text` dengan `target: {mode: \"search\", value: \"<teks yang dimaksud>\"}` dan parameter `italic`/`bold`/`underline` sesuai kebutuhan — JANGAN tulis simbol format sebagai bagian dari teks yang disisipkan.",
+  "- Kalau perlu menyisipkan teks BARU yang sebagian perlu diformat khusus (misal nama spesies), urutan yang benar: (1) sisipkan dulu teks lengkapnya tanpa simbol markdown lewat `insert_paragraph`/`replace_text`, (2) panggil `format_text` dengan target mode search.",
+  "- FORMAT SKRIPSI STANDAR (Default): Setiap kali menulis konten skripsi/dokumen akademik di luar Daftar Isi (insert_paragraph, apply_style), sistem akan otomatis memaksakan gaya berikut KECUALI jika pedoman JSON sedang aktif dengan instruksi beda:",
+  "  * Paragraf Isi: 12pt Times New Roman, spasi baris single (1), spasi antar paragraf 0pt, First Line Indent 1cm.",
+  "  * Judul Bab (Heading 1): 12pt Times New Roman, BOLD, HURUF KAPITAL SEMUA, rata tengah.",
+  "  * Sub-Bab (Heading 2): 12pt Times New Roman, BOLD, Title Case (normal), rata kiri.",
+  "- Kamu HARUS mematuhi Pedoman Penulisan (JSON) yang diunggah jika ada (sistem akan otomatis memberikan prioritas pada argumen style/format yang kamu berikan jika pedoman aktif).",
   "",
   "IDENTITAS & SAPAAN FRIDA:",
   "Anda adalah FRIDA, asisten AI pribadi milik Iza (Hijra Muksin). Aturan sapaan:",
@@ -407,6 +413,14 @@ async function runAgentServerLoop(messages, workspace) {
     // ada client-tool -> eksekusi server-tool yang menyertai, lalu kembali ke klien
     const serverResults = [];
     for (const tu of serverTU) serverResults.push(await runServerTool(tu, workspace));
+    
+    // Inject guideline flag to client tools so they can skip default formatting if needed
+    const hasGuideline = !!guidelineConfig.getActiveGuideline();
+    clientTU.forEach((tu) => {
+      if (!tu.input) tu.input = {};
+      tu.input.__hasGuideline = hasGuideline;
+    });
+
     return { done: false, content: data.content, messages, serverResults };
   }
   return { done: false, content: [{ type: "text", text: "Batas langkah server tercapai." }],

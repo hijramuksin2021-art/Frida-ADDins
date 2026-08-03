@@ -16,6 +16,46 @@
   if (typeof module !== "undefined" && module.exports) module.exports = api; // Node
   if (typeof window !== "undefined") window.FRIDA_HANDLERS = api;            // Browser
 })(this, function () {
+  // ---- Markdown Format Utility ----
+  function extractMarkdownFormatting(text) {
+    const segments = []; 
+    let clean = "";
+    let i = 0;
+    while (i < text.length) {
+      const boldMatch = text.slice(i).match(/^\*\*(.+?)\*\*/);
+      const italicMatch = text.slice(i).match(/^[*_](.+?)[*_]/);
+      if (boldMatch) {
+        segments.push({ start: clean.length, end: clean.length + boldMatch[1].length, bold: true });
+        clean += boldMatch[1];
+        i += boldMatch[0].length;
+      } else if (italicMatch) {
+        segments.push({ start: clean.length, end: clean.length + italicMatch[1].length, italic: true });
+        clean += italicMatch[1];
+        i += italicMatch[0].length;
+      } else {
+        clean += text[i];
+        i += 1;
+      }
+    }
+    return { clean, segments };
+  }
+
+  async function applyExtractedFormatting(context, wordObject, cleanText, segments) {
+    if (!segments || segments.length === 0) return;
+    for (const seg of segments) {
+      const targetText = cleanText.slice(seg.start, seg.end);
+      if (!targetText) continue;
+      const searchResults = wordObject.search(targetText, { matchCase: true, matchWholeWord: false });
+      searchResults.load("items");
+      await context.sync();
+      if (searchResults.items && searchResults.items.length > 0) {
+        const match = searchResults.items[0];
+        if (seg.bold) match.font.bold = true;
+        if (seg.italic) match.font.italic = true;
+      }
+    }
+  }
+
   // ---- resolveTarget: selektor deklaratif -> Word.Range[] ----
   // Menghapus seluruh kelas bug "indeks paragraf bergeser": target diresolusi
   // sekali, sebelum mutasi.
@@ -131,8 +171,10 @@
   // ---- Tool: replace_text (write) ----
   async function replace_text(context, args) {
     const find = String(args.find || "");
-    const replace = String(args.replace || "");
+    const replaceRaw = String(args.replace || "");
     if (!find.trim()) return { error: "find kosong" };
+
+    const { clean: replace, segments } = extractMarkdownFormatting(replaceRaw);
 
     // Word.Range.search punya batas string pencarian (~255 char). Kalau lebih panjang,
     // jangan retry identik: pakai strategi alternatif yang lebih aman.
@@ -175,7 +217,8 @@
         // Replace pada range kandidat saja. Jika target panjang, ini fallback yang aman.
         for (const r of candidates || []) {
           try {
-            r.insertText(replace, Word.InsertLocation.replace);
+            const insertedRange = r.insertText(replace, Word.InsertLocation.replace);
+            await applyExtractedFormatting(context, insertedRange, replace, segments);
             replaced++;
           } catch (err) {
             // Jangan retry string panjang yang sama; lanjut ke kandidat berikutnya.
@@ -191,10 +234,12 @@
       });
       res.load("items");
       await context.sync();
-      res.items.forEach((r) => {
-        r.insertText(replace, Word.InsertLocation.replace);
+      
+      for (const r of res.items) {
+        const insertedRange = r.insertText(replace, Word.InsertLocation.replace);
+        await applyExtractedFormatting(context, insertedRange, replace, segments);
         replaced++;
-      });
+      }
       await context.sync();
     }
     return { replaced, strategy: useFallbackReplacement ? "fallback-anchor" : "search" };
@@ -265,7 +310,42 @@
       if (/Heading/i.test(args.styleName)) {
         try { p.font.color = "#000000"; } catch(e) {}
       }
+
+      if (args.__hasGuideline !== true) {
+        if (/Heading1/i.test(args.styleName)) {
+          try {
+            p.font.size = 12;
+            p.font.name = "Times New Roman";
+            p.font.bold = true;
+            p.alignment = Word.Alignment.centered;
+          } catch(e) {}
+        } else if (/Heading2/i.test(args.styleName)) {
+          try {
+            p.font.size = 12;
+            p.font.name = "Times New Roman";
+            p.font.bold = true;
+            p.alignment = Word.Alignment.left;
+          } catch(e) {}
+        }
+      }
     });
+
+    if (args.__hasGuideline !== true && /Heading1/i.test(args.styleName)) {
+      paras.forEach((p) => {
+        try {
+           p.load("text");
+        } catch(e) {}
+      });
+      await context.sync();
+      paras.forEach((p) => {
+        try {
+           if (p.text) {
+             p.insertText(p.text.toUpperCase(), Word.InsertLocation.replace);
+           }
+        } catch(e) {}
+      });
+    }
+
     await context.sync();
     return { applied: paras.length, style: args.styleName };
   }
@@ -296,25 +376,61 @@
     if (!parts.length) return { error: "text kosong" };
     const loc = args.location || "end";
     const body = context.document.body;
-    const applyStyle = (p) => { if (args.style) { try { p.style = args.style; } catch (e) {} } };
+
+    const applyStyleAndDefaults = async (p, cleanText, segments) => {
+      await applyExtractedFormatting(context, p, cleanText, segments);
+      if (args.style) {
+        try { p.style = args.style; } catch (e) {}
+      } else if (args.__hasGuideline !== true) {
+        try {
+          p.font.size = 12;
+          p.font.name = "Times New Roman";
+          p.spaceBefore = 0;
+          p.spaceAfter = 0;
+          p.firstLineIndent = 28.35;
+          p.lineSpacing = 12;
+        } catch(e) {}
+      }
+    };
+
     let inserted = 0;
 
     if (loc === "end" || loc === "start") {
       const where = loc === "end" ? Word.InsertLocation.end : Word.InsertLocation.start;
-      const seq = loc === "start" ? parts.slice().reverse() : parts; // start: balik agar urutan benar
-      seq.forEach((t) => { applyStyle(body.insertParagraph(t, where)); inserted++; });
+      const seq = loc === "start" ? parts.slice().reverse() : parts; 
+      for (const t of seq) {
+        const { clean, segments } = extractMarkdownFormatting(t);
+        const p = body.insertParagraph(clean, where);
+        await applyStyleAndDefaults(p, clean, segments);
+        inserted++;
+      }
     } else if (loc === "after_selection") {
       let anchor = context.document.getSelection();
-      parts.forEach((t) => { anchor = anchor.insertParagraph(t, Word.InsertLocation.after); applyStyle(anchor); inserted++; });
+      for (const t of parts) {
+        const { clean, segments } = extractMarkdownFormatting(t);
+        anchor = anchor.insertParagraph(clean, Word.InsertLocation.after);
+        await applyStyleAndDefaults(anchor, clean, segments);
+        inserted++;
+      }
     } else if (loc === "after_index" || loc === "before_index") {
       const ps = body.paragraphs; ps.load("items"); await context.sync();
       const target = ps.items[args.index];
       if (!target) return { error: "indeks paragraf " + args.index + " tak ada" };
       if (loc === "after_index") {
         let anchor = target;
-        parts.forEach((t) => { anchor = anchor.insertParagraph(t, Word.InsertLocation.after); applyStyle(anchor); inserted++; });
+        for (const t of parts) {
+          const { clean, segments } = extractMarkdownFormatting(t);
+          anchor = anchor.insertParagraph(clean, Word.InsertLocation.after);
+          await applyStyleAndDefaults(anchor, clean, segments);
+          inserted++;
+        }
       } else {
-        parts.forEach((t) => { applyStyle(target.insertParagraph(t, Word.InsertLocation.before)); inserted++; });
+        for (const t of parts) {
+          const { clean, segments } = extractMarkdownFormatting(t);
+          const p = target.insertParagraph(clean, Word.InsertLocation.before);
+          await applyStyleAndDefaults(p, clean, segments);
+          inserted++;
+        }
       }
     } else {
       return { error: "location tidak dikenal: " + loc };
