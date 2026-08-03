@@ -89,7 +89,14 @@
         ps.load("items/styleBuiltIn");
         await context.sync();
         return ps.items
-          .filter((p) => /Heading/i.test(p.styleBuiltIn || ""))
+          .filter((p) => {
+            const sb = p.styleBuiltIn || "";
+            if (!/Heading/i.test(sb)) return false;
+            if (target.level != null) {
+              return new RegExp("Heading\\s*" + target.level + "$", "i").test(sb);
+            }
+            return true;
+          })
           .map((p) => p.getRange());
       }
 
@@ -261,7 +268,14 @@
     if (target.mode === "heading") {
       all.load("items/styleBuiltIn");
       await context.sync();
-      return all.items.filter((p) => /Heading/i.test(p.styleBuiltIn || ""));
+      return all.items.filter((p) => {
+        const sb = p.styleBuiltIn || "";
+        if (!/Heading/i.test(sb)) return false;
+        if (target.level != null) {
+          return new RegExp("Heading\\s*" + target.level + "$", "i").test(sb);
+        }
+        return true;
+      });
     }
     if (target.mode === "style") {
       all.load("items/style,items/styleBuiltIn");

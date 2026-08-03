@@ -44,6 +44,7 @@
         description: "Untuk mode=search: kemunculan mana yang dikenai.",
       },
       n: { type: "integer", description: "Nomor kemunculan jika occurrence=nth (mulai 1)." },
+      level: { type: "integer", description: "Untuk mode=heading: level heading yang disasar (1 untuk Heading 1, 2 untuk Heading 2, dst)." },
     },
     required: ["mode"],
   };
