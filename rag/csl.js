@@ -99,10 +99,22 @@ function apa7(m) {
   } else if (m.type === "book") {
     s += italic(titleOf(m)) + ". " + (m.publisher || "") + ".";
   } else { // article-journal default
-    s += titleOf(m) + ". " + italic(m.container || "") +
-      (m.volume ? ", " + italic(String(m.volume)) : "") +
-      (m.issue ? "(" + m.issue + ")" : "") +
-      (m.page ? ", " + m.page : "") + ".";
+    s += titleOf(m) + ".";
+    const parts = [];
+    let volIssue = "";
+    if (m.volume) volIssue += italic(String(m.volume));
+    if (m.issue) volIssue += "(" + m.issue + ")";
+    
+    if (m.container) {
+      let c = italic(m.container);
+      if (volIssue) c += ", " + volIssue;
+      parts.push(c);
+    } else if (volIssue) {
+      parts.push(volIssue);
+    }
+    if (m.page) parts.push(m.page);
+    
+    if (parts.length > 0) s += " " + parts.join(", ") + ".";
     if (m.DOI) s += " https://doi.org/" + m.DOI.replace(/^https?:\/\/doi\.org\//, "");
   }
   return s.trim();
@@ -115,9 +127,17 @@ function mla(m) {
   const authStr = auts.length >= 3 ? family(auts[0]) + ", et al" : (rest ? lead + ", and " + rest : lead);
   const y = year(m);
   if (m.type === "book") return (authStr ? authStr + ". " : "") + italic(titleOf(m)) + ". " + (m.publisher || "") + ", " + y + ".";
-  return (authStr ? authStr + ". " : "") + '"' + titleOf(m) + '." ' + italic(m.container || "") +
-    (m.volume ? ", vol. " + m.volume : "") + (m.issue ? ", no. " + m.issue : "") +
-    ", " + y + (m.page ? ", pp. " + m.page : "") + ".";
+  
+  let s = (authStr ? authStr + ". " : "") + '"' + titleOf(m) + '."';
+  const parts = [];
+  if (m.container) parts.push(italic(m.container));
+  if (m.volume) parts.push("vol. " + m.volume);
+  if (m.issue) parts.push("no. " + m.issue);
+  if (y) parts.push(y);
+  if (m.page) parts.push("pp. " + m.page);
+  
+  if (parts.length > 0) s += " " + parts.join(", ") + ".";
+  return s;
 }
 
 function chicago(m) {
@@ -127,9 +147,22 @@ function chicago(m) {
   const authStr = rest ? lead + ", and " + rest : lead;
   const y = year(m);
   if (m.type === "book") return (authStr ? authStr + ". " : "") + y + ". " + italic(titleOf(m)) + ". " + (m.place ? m.place + ": " : "") + (m.publisher || "") + ".";
-  return (authStr ? authStr + ". " : "") + y + '. "' + titleOf(m) + '." ' + italic(m.container || "") +
-    (m.volume ? " " + m.volume : "") + (m.issue ? " (" + m.issue + ")" : "") +
-    (m.page ? ": " + m.page : "") + ".";
+  
+  let s = (authStr ? authStr + ". " : "") + y + '. "' + titleOf(m) + '."';
+  const parts = [];
+  if (m.container) parts.push(italic(m.container));
+  
+  let volIssue = "";
+  if (m.volume) volIssue += m.volume;
+  if (m.issue) volIssue += (m.volume ? " " : "") + "(" + m.issue + ")";
+  if (volIssue) parts.push(volIssue);
+  
+  if (parts.length > 0) {
+    let combined = parts.join(" ");
+    if (m.page) combined += ": " + m.page;
+    s += " " + combined + ".";
+  }
+  return s;
 }
 
 function harvard(m) {
@@ -138,9 +171,19 @@ function harvard(m) {
   const authStr = joinNames(names, "and");
   const y = year(m);
   if (m.type === "book") return (authStr ? authStr + " " : "") + "(" + y + ") " + italic(titleOf(m)) + ". " + (m.place ? m.place + ": " : "") + (m.publisher || "") + ".";
-  return (authStr ? authStr + " " : "") + "(" + y + ") '" + titleOf(m) + "', " + italic(m.container || "") +
-    (m.volume ? ", " + m.volume : "") + (m.issue ? "(" + m.issue + ")" : "") +
-    (m.page ? ", pp. " + m.page : "") + ".";
+  
+  let s = (authStr ? authStr + " " : "") + "(" + y + ") '" + titleOf(m) + "'.";
+  const parts = [];
+  if (m.container) parts.push(italic(m.container));
+  
+  let volIssue = "";
+  if (m.volume) volIssue += m.volume;
+  if (m.issue) volIssue += "(" + m.issue + ")";
+  if (volIssue) parts.push(volIssue);
+  if (m.page) parts.push("pp. " + m.page);
+  
+  if (parts.length > 0) s += " " + parts.join(", ") + ".";
+  return s;
 }
 
 function ieee(m) {

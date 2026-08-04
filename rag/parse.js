@@ -34,8 +34,8 @@ function parseTxt(buffer) {
 function guessTitle(text, fallback) {
   const lines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   for (const l of lines.slice(0, 8)) {
-    if (l.length >= 8 && l.length <= 200 && !/^(abstract|abstrak|http|doi|www\.)/i.test(l)) {
-      return l;
+    if (l.length >= 8 && l.length <= 200 && !/^(abstract|abstrak|http|doi|www\.)/i.test(l) && !/^(JURNAL|JOURNAL OF|JOURNAL)\b/i.test(l)) {
+      return l.replace(/\s*\(\d{4}\)$/, "").trim();
     }
   }
   return fallback;

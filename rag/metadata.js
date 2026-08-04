@@ -34,6 +34,32 @@ function guessInstitution(text) {
   return m ? m[0].replace(/\s+/g, " ").trim() : null;
 }
 
+// Tebak penulis dari isi teks (baris 2-6)
+function guessAuthorFromText(text) {
+  const lines = String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (let i = 1; i < Math.min(8, lines.length); i++) {
+    const l = lines[i];
+    if (l.length > 150 || /^(abstract|abstrak|http|doi|www\.)/i.test(l) || /universitas|institut|fakultas|departemen|program|studi/i.test(l)) continue;
+    const names = l.split(/,|\bdan\b|&/i).map(n => n.replace(/[\d*]/g, "").trim()).filter(n => n.length > 2);
+    if (names.length > 0 && names.length <= 5) {
+      const authors = [];
+      let valid = true;
+      for (const n of names) {
+        const words = n.split(/\s+/);
+        if (words.length === 0 || words.length > 4) valid = false;
+        if (valid) {
+          authors.push({
+            family: titleCase(words[words.length - 1]),
+            given: titleCase(words.slice(0, -1).join(" "))
+          });
+        }
+      }
+      if (valid && authors.length > 0) return authors;
+    }
+  }
+  return null;
+}
+
 // build({ filename, text, parsedMeta }) -> { csl, confidence }
 // parsedMeta = { title, year, doi } dari parse.js
 async function build({ filename, text, parsedMeta }) {
@@ -47,18 +73,24 @@ async function build({ filename, text, parsedMeta }) {
   }
 
   // 2) tebakan lokal
+  let confidence = "medium";
+  let author = guessAuthorFromText(text);
+  if (!author) {
+    author = authorFromFilename(filename) || [];
+    confidence = "low"; // Jika jatuh ke fallback nama file, selalu low
+  }
+  if (!parsedMeta.year) confidence = "low";
+
   const csl = {
     type,
     title: parsedMeta.title || (filename || "").replace(/\.[^.]+$/, ""),
-    author: authorFromFilename(filename) || [],
+    author: author,
     issued: { year: parsedMeta.year || null },
     container: null,
     institution: type === "thesis" ? guessInstitution(text) : null,
     DOI: parsedMeta.doi || null,
     _source: "guess",
   };
-  // confidence: ada penulis & tahun -> medium; selain itu low
-  const confidence = (csl.author.length && csl.issued.year) ? "medium" : "low";
   return { csl, confidence };
 }
 
