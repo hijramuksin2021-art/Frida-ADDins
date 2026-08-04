@@ -93,21 +93,16 @@
           '<div class="src-title">' + esc(s.title || s.filename) + " " + conf + "</div>" +
           '<div class="src-meta">' + meta + "</div>" +
           '<div class="src-actions">' +
-            '<button class="src-action-btn" onclick="window.toggleEdit(\'' + esc(s.id) + '\')">✎ Edit</button>' +
-            '<button class="src-action-btn src-danger" onclick="window.removeSource(\'' + esc(s.id) + '\')">✕ Hapus</button>' +
+            '<button class="src-edit src-action-btn" data-id="' + esc(s.id) + '">✎ Edit</button>' +
+            '<button class="src-del src-action-btn src-danger" data-id="' + esc(s.id) + '">✕ Hapus</button>' +
           '</div></div>' +
           '<div class="src-edit-form" id="ef-' + s.id + '"></div>';
       }).join("");
-      if (hasPending) {
-        if (!pollTimer) pollTimer = setTimeout(refreshList, 3000);
-      } else {
-        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-      }
 
       box.querySelectorAll(".src-del").forEach((b) =>
-        (b.onclick = () => removeSource(b.getAttribute("data-id"))));
+        (b.onclick = () => window.removeSource(b.getAttribute("data-id"))));
       box.querySelectorAll(".src-edit").forEach((b) =>
-        (b.onclick = () => toggleEdit(b.getAttribute("data-id"), items)));
+        (b.onclick = () => window.toggleEdit(b.getAttribute("data-id"), items)));
     } catch (err) {
       box.innerHTML = '<div class="src-empty">Gagal memuat daftar sumber.</div>';
     }
