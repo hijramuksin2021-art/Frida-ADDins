@@ -59,17 +59,18 @@
         return;
       }
       const rows = r.result || [];
-      const done = rows.filter((x) => x.numChunks != null);
+      const queued = rows.filter((x) => x.queued);
       const skipped = rows.filter((x) => x.skipped);
       const errs = rows.filter((x) => x.error);
-      const totChunks = done.reduce((a, x) => a + (x.numChunks || 0), 0);
       let msg;
       if (!rows.length) msg = "Belum ada sumber untuk diindeks.";
-      else if (done.length) msg = "Terindeks: " + done.length + " dok baru (" + totChunks + " chunk)" +
-        (skipped.length ? ", " + skipped.length + " sudah ada" : "") + ".";
+      else if (queued.length) msg = queued.length + " dokumen sedang diproses di background — status akan update otomatis." +
+        (skipped.length ? " (" + skipped.length + " sudah terindeks)." : "");
       else msg = "Semua " + skipped.length + " sumber sudah terindeks ✓ — siap dicari.";
       if (errs.length) msg += " " + errs.length + " gagal.";
       srcStatus(msg, errs.length ? "err" : "ok");
+      // Explicitly trigger a refresh right away to show pending status
+      refreshList();
     } catch (err) {
       srcStatus("Gagal indeks: " + (err.message || err), "err");
     } finally {

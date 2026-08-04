@@ -91,19 +91,34 @@ async function ingestUpload({ filename, mime, dataBase64, workspace }) {
 
 // Reindex dokumen yang belum punya vektor (mis. diunggah sebelum R1).
 async function reindexAll(workspace) {
-  const result = [];
-  for (const s of store.list(workspace)) {
-    if (vectors.hasChunks(s.id)) { result.push({ id: s.id, skipped: true }); continue; }
+  const targets = store.list(workspace).filter((s) => !vectors.hasChunks(s.id));
+  const queued = [];
+
+  for (const s of targets) {
     const full = store.get(s.id);
-    if (!full || !full.text) { result.push({ id: s.id, error: "tak ada teks" }); continue; }
-    try {
-      const r = await indexDocument(s.id, full.text);
-      result.push({ id: s.id, numChunks: r.numChunks });
-    } catch (e) {
-      result.push({ id: s.id, error: String(e.message || e) });
+    if (!full || !full.text) {
+      store.updateStatus(s.id, "error", "tak ada teks");
+      queued.push({ id: s.id, error: "tak ada teks" });
+      continue;
     }
+    store.updateStatus(s.id, "pending", null);
+    queued.push({ id: s.id, queued: true });
+
+    setImmediate(async () => {
+      try {
+        const r = await indexDocument(s.id, full.text);
+        store.updateStatus(s.id, "done", null);
+      } catch (e) {
+        store.updateStatus(s.id, "error", String(e.message || e));
+      }
+    });
   }
-  return result;
+
+  const alreadyIndexed = store.list(workspace).filter((s) => vectors.hasChunks(s.id));
+  return [
+    ...queued,
+    ...alreadyIndexed.map((s) => ({ id: s.id, skipped: true })),
+  ];
 }
 
 module.exports = { ingestUpload, indexDocument, reindexAll, extOf };
