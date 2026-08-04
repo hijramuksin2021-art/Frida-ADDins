@@ -51,7 +51,7 @@ async function ingestUpload({ filename, mime, dataBase64, workspace }) {
   if (buffer.length > MAX_BYTES) throw new Error("File melebihi 25 MB");
 
   const hash = store.sha256(buffer);
-  const existing = store.findByHash(hash);
+  const existing = store.findByHash(hash, workspace);
   if (existing) return { document: existing, duplicate: true };
 
   const parsed = await parse.parseByExt(ext, buffer, filename);

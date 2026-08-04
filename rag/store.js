@@ -26,8 +26,9 @@ function sha256(buf) { return crypto.createHash("sha256").update(buf).digest("he
 function newId() { return "src_" + crypto.randomBytes(6).toString("hex"); }
 
 // Cari dokumen dgn hash sama (dedup).
-function findByHash(hash) {
-  return readIndex().find((d) => d.hash === hash) || null;
+function findByHash(hash, workspace) {
+  const all = readIndex();
+  return all.find((d) => d.hash === hash && (!workspace || d.workspace === workspace)) || null;
 }
 
 // Simpan dokumen baru. doc = {filename,mime,ext,hash,title,year,doi,confidence,pages,chars,text,workspace}
