@@ -783,8 +783,15 @@ async function handleSources(req, res) {
     }
     // POST /api/sources/reindex -> embed dokumen yg belum ber-vektor
     if (req.method === "POST" && url === "/api/sources/reindex") {
-      const result = await ingest.reindexAll();
-      return sendJson(res, 200, { result });
+      try {
+        const bodyStr = await readBody(req);
+        let parsed = {};
+        try { parsed = JSON.parse(bodyStr || "{}"); } catch (_) {}
+        const result = await ingest.reindexAll(parsed.workspace);
+        return sendJson(res, 200, { result });
+      } catch (e) {
+        return sendJson(res, 500, { error: String(e.message || e) });
+      }
     }
     // POST /api/sources/search  { query, k, document_ids, workspace }
     if (req.method === "POST" && url === "/api/sources/search") {

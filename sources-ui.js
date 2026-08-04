@@ -43,11 +43,21 @@
     if (btn) btn.disabled = true;
     srcStatus("Mengindeks sumber (embedding)… pertama kali bisa lama (unduh model).");
     try {
-      const r = await (await fetch("/api/sources/reindex", { 
+      const resp = await fetch("/api/sources/reindex", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace: getWs() })
-      })).json();
+      });
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        srcStatus("Gagal indeks ulang (server error " + resp.status + "): " + errBody.slice(0, 200), "err");
+        return;
+      }
+      const r = await resp.json();
+      if (r.error) {
+        srcStatus("Gagal indeks ulang: " + r.error, "err");
+        return;
+      }
       const rows = r.result || [];
       const done = rows.filter((x) => x.numChunks != null);
       const skipped = rows.filter((x) => x.skipped);
