@@ -100,9 +100,9 @@
       }).join("");
 
       box.querySelectorAll(".src-del").forEach((b) =>
-        (b.onclick = () => window.removeSource(b.getAttribute("data-id"))));
+        (b.onclick = () => removeSource(b.getAttribute("data-id"))));
       box.querySelectorAll(".src-edit").forEach((b) =>
-        (b.onclick = () => window.toggleEdit(b.getAttribute("data-id"), items)));
+        (b.onclick = () => toggleEdit(b.getAttribute("data-id"), items)));
     } catch (err) {
       box.innerHTML = '<div class="src-empty">Gagal memuat daftar sumber.</div>';
     }
