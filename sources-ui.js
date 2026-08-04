@@ -19,8 +19,6 @@
       dropZone.addEventListener("drop", (e) => uploadFiles(e.dataTransfer.files));
       dropZone.addEventListener("click", () => fileInput.click());
     }
-    const reBtn = document.getElementById("srcReindex");
-    if (reBtn) reBtn.addEventListener("click", reindex);
     refreshList();
     showEmbedStatus();
   });
@@ -37,46 +35,6 @@
   }
 
   function getWs() { return window.FRIDA_WORKSPACE_ID || localStorage.getItem("frida_workspace_id") || "default"; }
-
-  async function reindex() {
-    const btn = document.getElementById("srcReindex");
-    if (btn) btn.disabled = true;
-    srcStatus("Mengindeks sumber (embedding)… pertama kali bisa lama (unduh model).");
-    try {
-      const resp = await fetch("/api/sources/reindex", { 
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: getWs() })
-      });
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => "");
-        srcStatus("Gagal indeks ulang (server error " + resp.status + "): " + errBody.slice(0, 200), "err");
-        return;
-      }
-      const r = await resp.json();
-      if (r.error) {
-        srcStatus("Gagal indeks ulang: " + r.error, "err");
-        return;
-      }
-      const rows = r.result || [];
-      const queued = rows.filter((x) => x.queued);
-      const skipped = rows.filter((x) => x.skipped);
-      const errs = rows.filter((x) => x.error);
-      let msg;
-      if (!rows.length) msg = "Belum ada sumber untuk diindeks.";
-      else if (queued.length) msg = queued.length + " dokumen sedang diproses di background — status akan update otomatis." +
-        (skipped.length ? " (" + skipped.length + " sudah terindeks)." : "");
-      else msg = "Semua " + skipped.length + " sumber sudah terindeks ✓ — siap dicari.";
-      if (errs.length) msg += " " + errs.length + " gagal.";
-      srcStatus(msg, errs.length ? "err" : "ok");
-      // Explicitly trigger a refresh right away to show pending status
-      refreshList();
-    } catch (err) {
-      srcStatus("Gagal indeks: " + (err.message || err), "err");
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  }
 
   function srcStatus(msg, cls) {
     const el = document.getElementById("srcStatus");
@@ -106,15 +64,13 @@
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
-        srcStatus(data.duplicate ? f.name + " sudah ada" : f.name + " ditambahkan", "ok");
+        srcStatus(data.duplicate ? f.name + " sudah ada" : f.name + " siap digunakan", "ok");
       } catch (err) {
         srcStatus("Gagal " + f.name + ": " + (err.message || err), "err");
       }
     }
     refreshList();
   }
-
-  let pollTimer = null;
 
   async function refreshList() {
     const box = document.getElementById("srcList");
@@ -126,26 +82,22 @@
       const countEl = document.getElementById("srcCount");
       if (countEl) countEl.textContent = items.length ? "(" + items.length + ")" : "";
       if (!items.length) { box.innerHTML = '<div class="src-empty">Belum ada sumber. Unggah jurnal/PDF untuk mulai.</div>'; return; }
-      let hasPending = false;
+      
       box.innerHTML = items.map((s) => {
-        let statText = "";
-        if (s.indexStatus === "pending") { statText = '<span style="color:#0078d4">Memproses (mengindeks)...</span>'; hasPending = true; }
-        else if (s.indexStatus === "error") statText = '<span style="color:#d13438">Error: ' + esc(s.indexError || "Gagal mengindeks") + '</span>';
-        else if (s.indexStatus === "done") statText = '<span style="color:#107c10">Siap dipakai</span>';
-
         const metaData = [s.ext.toUpperCase(), s.year || null, s.pages ? s.pages + " hal" : null,
           Math.round((s.chars || 0) / 1000) + "k char"].filter(Boolean).join(" · ");
-        const meta = esc(metaData) + (statText ? " · " + statText : "");
+        const meta = esc(metaData);
         const conf = (s.confidence === "low" || s.confidence === "medium")
           ? '<span class="src-warn" title="Metadata tebakan — klik ✎ untuk koreksi sebelum menyitir">metadata?</span>' : "";
-        return '<div class="src-item" data-id="' + s.id + '">' +
-          '<div class="src-main"><div class="src-title">' + esc(s.title || s.filename) + " " + conf + "</div>" +
-          '<div class="src-meta">' + meta + "</div></div>" +
-          '<button class="src-edit" data-id="' + s.id + '" title="Edit metadata sitasi">✎</button>' +
-          '<button class="src-del" data-id="' + s.id + '" title="Hapus">✕</button></div>' +
+        return '<div class="src-item">' +
+          '<div class="src-title">' + esc(s.title || s.filename) + " " + conf + "</div>" +
+          '<div class="src-meta">' + meta + "</div>" +
+          '<div class="src-actions">' +
+            '<button class="src-action-btn" onclick="window.toggleEdit(\'' + esc(s.id) + '\')">✎ Edit</button>' +
+            '<button class="src-action-btn src-danger" onclick="window.removeSource(\'' + esc(s.id) + '\')">✕ Hapus</button>' +
+          '</div></div>' +
           '<div class="src-edit-form" id="ef-' + s.id + '"></div>';
       }).join("");
-
       if (hasPending) {
         if (!pollTimer) pollTimer = setTimeout(refreshList, 3000);
       } else {

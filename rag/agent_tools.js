@@ -3,8 +3,6 @@
 // langsung di server dalam loop agentic. Mengembalikan objek hasil (jadi tool_result).
 
 const store = require("./store");
-const vectors = require("./vectors");
-const embeddings = require("./embeddings");
 const { generate_paragraph_from_source } = require("./generate");
 const { resolveSourceTool } = require("./aliases");               // R4
 const { summarize_source, compare_sources } = require("./summarize"); // R4
@@ -12,59 +10,46 @@ const { summarize_source, compare_sources } = require("./summarize"); // R4
 const MAX_CHUNK_CHARS = 700; // batasi teks per hit agar hemat token
 
 async function search_uploaded_sources(input) {
-  const query = (input && input.query) || "";
-  if (!query) return { error: "query kosong" };
-  const all = store.list(input.workspace);
-  if (!all.length) return { hits: [], note: "Belum ada sumber terunggah." };
+  const workspace = input.workspace;
+  const docs = store.list(workspace);
+  if (!docs.length) return { error: "Belum ada dokumen diupload di workspace ini." };
+
+  const MAX_TOTAL_CHARS = 150000; // batas aman gabungan semua dokumen (~35-40rb token)
+  let combined = [];
+  let totalChars = 0;
+  const skipped = [];
 
   const docIds = (input.document_ids && input.document_ids.length)
     ? input.document_ids
-    : all.map((d) => d.id);
+    : docs.map((d) => d.id);
 
-  let qvec;
-  try { [qvec] = await embeddings.embed([query]); }
-  catch (e) { return { error: "embeddings gagal: " + (e.message || e) }; }
-
-  const unindexedIds = docIds.filter(id => !vectors.hasChunks(id));
-  if (docIds.length > 0 && unindexedIds.length === docIds.length) {
-    return {
-      hits: [],
-      needsReindex: true,
-      note: "Dokumen ditemukan tapi BELUM BERHASIL DIINDEKS (0 chunks tersimpan). Sarankan pengguna klik tombol 'Indeks Ulang' di panel Referensi, JANGAN minta pengguna copy-paste isi dokumen secara manual — coba lagi otomatis setelah pengguna klik indeks ulang."
-    };
-  }
-
-  const hits = vectors.search(qvec, docIds, { k: input.k || 6 });
-  const titles = {};
-  all.forEach((d) => (titles[d.id] = d.title));
-
-  if (!hits.length) {
-    // Fallback: cek apakah query merujuk pada nama file (bukan makna kontennya)
-    const resolveMatch = await resolveSourceTool({ query, workspace: input.workspace });
-    let possibleMatch = null;
-    if (resolveMatch && resolveMatch.best_id && resolveMatch.score > 0.3) {
-      possibleMatch = {
-        document_id: resolveMatch.best_id,
-        title: resolveMatch.title,
-        filename: resolveMatch.filename,
-        note: "Dokumen ini ada di sistem, tapi kontennya tidak memiliki kemiripan semantik dengan query. Gunakan resolve_source untuk pertanyaan terkait identitas/keberadaan dokumen."
-      };
+  for (const d of docs) {
+    if (!docIds.includes(d.id)) continue;
+    const full = store.get(d.id);
+    if (!full || !full.text) continue;
+    if (totalChars + full.text.length > MAX_TOTAL_CHARS) {
+      skipped.push(d.filename || d.title);
+      continue;
     }
-    return { 
-      hits: [], 
-      possibleMatch,
-      note: "Tidak ada kutipan relevan di sumber secara semantik (bukti tak cukup). " +
-            "Jika sumber belum diindeks, minta pengguna klik 'Indeks ulang sumber'." 
-    };
+    combined.push({
+      title: d.title || d.filename,
+      text: full.text,
+      document_id: d.id
+    });
+    totalChars += full.text.length;
   }
+
+  if (!combined.length) {
+    return { error: "Dokumen terlalu besar untuk disertakan langsung (>150rb karakter). " +
+      "Fitur pencarian sebagian dokumen belum aktif untuk kasus ini." };
+  }
+
   return {
-    hits: hits.map((h) => ({
-      source_id: h.document_id,
-      title: titles[h.document_id] || null,
-      chunk_id: h.chunk_id,
-      score: Number(h.score.toFixed(3)),
-      text: (h.text || "").slice(0, MAX_CHUNK_CHARS),
-    })),
+    documents: combined,
+    note: skipped.length
+      ? "Catatan: " + skipped.length + " dokumen lain (" + skipped.join(", ") + ") tidak " +
+        "disertakan karena keterbatasan ukuran gabungan. Sebutkan ke user kalau relevan."
+      : undefined,
   };
 }
 

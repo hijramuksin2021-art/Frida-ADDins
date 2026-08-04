@@ -4,30 +4,9 @@
 
 const parse = require("./parse");
 const store = require("./store");
-const chunker = require("./chunk");
-const vectors = require("./vectors");
-const embeddings = require("./embeddings");
 const metadata = require("./metadata");
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
-const EMBED_BATCH = 32;
-
-// Chunk + embed teks dokumen -> simpan vektor. Dipakai saat upload & reindex.
-async function indexDocument(docId, text) {
-  const pieces = chunker.chunkText(text);
-  if (!pieces.length) return { numChunks: 0 };
-  const out = [];
-  for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
-    const batch = pieces.slice(i, i + EMBED_BATCH);
-    const vecs = await embeddings.embed(batch.map((p) => p.text));
-    batch.forEach((p, j) => {
-      out.push({ chunk_id: docId + ":" + p.ordinal, ordinal: p.ordinal,
-                 text: p.text, embedding: vecs[j] });
-    });
-  }
-  vectors.saveChunks(docId, out);
-  return { numChunks: out.length };
-}
 
 function extOf(filename, mime) {
   const m = /\.([a-z0-9]+)$/i.exec(filename || "");
@@ -71,54 +50,10 @@ async function ingestUpload({ filename, mime, dataBase64, workspace }) {
     doi: parsed.meta.doi,
     confidence: meta.confidence, csl: meta.csl,
     pages: parsed.pages, chars: parsed.chars,
-    text: parsed.text, workspace: workspace || "default",
-    indexStatus: "pending"
+    text: parsed.text, workspace: workspace || "default"
   });
 
-  // Tahap lambat (async) jalankan di background (fire and forget)
-  setImmediate(async () => {
-    try {
-      const indexed = await indexDocument(doc.id, parsed.text);
-      store.updateStatus(doc.id, "done", null);
-      // Optional: re-save full doc if you want to store numChunks, but usually vectors.hasChunks is enough
-    } catch (e) {
-      store.updateStatus(doc.id, "error", String(e.message || e));
-    }
-  });
-
-  return { document: doc, duplicate: false, indexStatus: "pending" };
+  return { document: doc, duplicate: false };
 }
 
-// Reindex dokumen yang belum punya vektor (mis. diunggah sebelum R1).
-async function reindexAll(workspace) {
-  const targets = store.list(workspace).filter((s) => !vectors.hasChunks(s.id));
-  const queued = [];
-
-  for (const s of targets) {
-    const full = store.get(s.id);
-    if (!full || !full.text) {
-      store.updateStatus(s.id, "error", "tak ada teks");
-      queued.push({ id: s.id, error: "tak ada teks" });
-      continue;
-    }
-    store.updateStatus(s.id, "pending", null);
-    queued.push({ id: s.id, queued: true });
-
-    setImmediate(async () => {
-      try {
-        const r = await indexDocument(s.id, full.text);
-        store.updateStatus(s.id, "done", null);
-      } catch (e) {
-        store.updateStatus(s.id, "error", String(e.message || e));
-      }
-    });
-  }
-
-  const alreadyIndexed = store.list(workspace).filter((s) => vectors.hasChunks(s.id));
-  return [
-    ...queued,
-    ...alreadyIndexed.map((s) => ({ id: s.id, skipped: true })),
-  ];
-}
-
-module.exports = { ingestUpload, indexDocument, reindexAll, extOf };
+module.exports = { ingestUpload, extOf };

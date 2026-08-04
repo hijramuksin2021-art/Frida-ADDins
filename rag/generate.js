@@ -3,8 +3,6 @@
 // Anti-halusinasi: model hanya boleh memakai passages; sitasi yang tak ada di passages ditandai.
 
 const store = require("./store");
-const vectors = require("./vectors");
-const embeddings = require("./embeddings");
 const { callModel, firstToolInput } = require("./llm");
 const { verifyCitations } = require("./citations");
 const { verifyQuotes } = require("./quotecheck");
@@ -85,21 +83,28 @@ async function generate_paragraph_from_source(input) {
     ? input.document_ids : all.map((d) => d.id);
   const query = input.source_query || instruction;
 
-  let qvec;
-  try { [qvec] = await embeddings.embed([query]); }
-  catch (e) { return { error: "embeddings gagal: " + (e.message || e) }; }
+  const MAX_TOTAL_CHARS = 150000;
+  let totalChars = 0;
+  const passages = [];
+  const hits = [];
 
-  const hits = vectors.search(qvec, docIds, { k: input.k || 6, minScore: GATE_SCORE });
-  if (!hits.length) {
-    const allHits = vectors.search(qvec, docIds, { k: 1 });
-    const maxScore = allHits.length ? allHits[0].score : 0;
-    logGeneration({ accepted: false, reason: "insufficient_evidence", maxScore, query });
-    return { needsMoreEvidence: true,
-      note: "Bukti di sumber tak cukup untuk menulis ini (tak ada kutipan relevan di atas ambang). " +
-            "Saya tidak akan mengarang. Coba persempit/ubah permintaan, atau pastikan sumber sudah diindeks." };
+  for (const id of docIds) {
+    const full = store.get(id);
+    if (!full || !full.text) continue;
+    if (totalChars + full.text.length > MAX_TOTAL_CHARS) continue;
+    
+    passages.push({ n: passages.length + 1, source_id: id, text: full.text });
+    // Keep hits structure for verification functions downstream
+    hits.push({ source_id: id, text: full.text, score: 1.0 });
+    totalChars += full.text.length;
   }
 
-  const passages = hits.map((h, i) => ({ n: i + 1, source_id: h.source_id, text: h.text }));
+  if (!passages.length) {
+    logGeneration({ accepted: false, reason: "insufficient_evidence", maxScore: 0, query });
+    return { needsMoreEvidence: true,
+      note: "Bukti di sumber tak cukup atau ukuran dokumen melebihi batas. " +
+            "Saya tidak akan mengarang. Coba persempit/ubah permintaan." };
+  }
 
   let data;
   try {

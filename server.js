@@ -291,10 +291,10 @@ const AGENT_SYSTEM_PROMPT_BASE = [
   "- 'buatkan cover/halaman judul/halaman sampul' -> insert_cover_page (1 panggilan, isi judul/penulis/tanggal dari konteks).",
   "- 'buatkan daftar isi' -> insert_toc. Sampaikan secara eksplisit bahwa ini daftar isi statis (hyperlink bisa diklik, namun nomor halaman tidak otomatis). Sarankan user pakai menu Word (References > Table of Contents) jika butuh nomor halaman otomatis.",
   "- 'format jadi proposal bisnis', 'rapikan jadi dokumen profesional' -> format_business_proposal (1 panggilan, jangan urai jadi banyak tool kecil).",
-  "- Pertanyaan/RINGKASAN yang merujuk dokumen/jurnal yang DIUNGGAH ('cari di sumber', 'ringkas jurnal ini', 'menurut paper terunggah') -> panggil search_uploaded_sources DULU, lalu jawab HANYA berdasarkan kutipan (sertakan source_id). JANGAN mengarang.",
+  "- Pertanyaan/RINGKASAN yang merujuk dokumen/jurnal yang DIUNGGAH ('cari di sumber', 'ringkas jurnal ini', 'menurut paper terunggah') -> panggil search_uploaded_sources DULU. PENTING: Tool ini sekarang mengembalikan ISI PENUH dokumen (bukan potongan pencarian), jadi Anda harus membaca & memahami sendiri bagian mana yang relevan dari teks utuh tersebut, lalu jawab HANYA berdasarkan informasi itu (sertakan source_id). JANGAN mengarang.",
   "- MENULIS/MENAMBAH PARAGRAF berbasis sumber ('tambahkan paragraf tentang X berdasarkan jurnal', 'tulis paragraf dari sumber') -> WAJIB pakai generate_paragraph_from_source (jangan menulis paragraf sendiri). Bila hasilnya needsMoreEvidence=true, sampaikan ke pengguna bahwa bukti tak cukup dan JANGAN menyisipkan apa pun. Bila ada paragraf, sisipkan dengan insert_paragraph memakai field 'paragraph' apa adanya, lalu beri tahu pengguna sumber/sitasi (verifiedCitations) dan peringatan bila ada flaggedCitations.",
   "  * PENTING (Integritas Sitasi): Saat menyisipkan paragraf dari dokumen yang diupload, sitasi in-text HARUS merujuk ke IDENTITAS DOKUMEN ITU SENDIRI (nama/tahun penulis dokumen, sesuai source_id-nya). JANGAN PERNAH mengambil nama/tahun yang KEBETULAN disebut di DALAM kutipan teks hasil pencarian (karena itu sitasi sekunder). Kalau ingin mengutip sumber sekunder dari dalam dokumen, gunakan format tidak langsung, misal '(Sularso, 1996, dalam [Penulis Dokumen Asli], [Tahun])'. Sebelum menyisipkan sitasi, PASTIKAN nama/tahun di teks SAMA PERSIS dengan metadata source_id yang akan dipakai di daftar pustaka.",
-  "Jika search_uploaded_sources tak mengembalikan kutipan relevan, katakan terus terang bahwa bukti di sumber tak cukup — jangan mengarang. Jika hasil dari search_uploaded_sources mengatakan 'needsReindex: true', beri tahu pengguna secara spesifik: 'Dokumen Anda sudah terupload tapi belum selesai diindeks. Silakan klik tombol Indeks Ulang di panel Referensi, lalu coba lagi.' JANGAN PERNAH meminta pengguna untuk copy-paste isi dokumen secara manual.",
+  "Jika dokumen terlalu besar atau tak ada dokumen yang diunggah, katakan terus terang bahwa bukti di sumber tak cukup — jangan mengarang. JANGAN PERNAH meminta pengguna untuk copy-paste isi dokumen secara manual.",
   "- Pertanyaan KEBERADAAN/KONFIRMASI dokumen ('apa kamu bisa lihat dokumen X', 'apa skripsi Y sudah diupload', 'kamu punya file Z nggak') → panggil resolve_source DULU dengan nama yang disebut user (JANGAN search_uploaded_sources untuk jenis pertanyaan ini, karena resolve_source mencocokkan nama file/judul, sedangkan search_uploaded_sources mencocokkan makna ISI dokumen — keduanya beda kegunaan). Kalau resolve_source menemukan hasil dengan skor tinggi, konfirmasi ke user dengan judul/nama file yang ditemukan. Kalau kosong, baru katakan tidak ditemukan, DAN sarankan user cek nama file di panel Sumber.",
   "- RESOLVE SUMBER DARI NAMA ALAMI ('jurnal Hijra', 'paper Nair 2012', 'sumber tentang agroforestri') → pakai resolve_source DULU untuk mendapat source_id (best_id), BARU panggil summarize_source / compare_sources / insert_citation.",
   "- RINGKAS SATU SUMBER ('ringkas jurnal ini', 'jelaskan paper X', 'apa isi sumber Y') → pastikan punya source_id (resolve_source jika pengguna hanya menyebut nama) lalu panggil summarize_source. Sampaikan hasilnya ke pengguna.",
@@ -780,18 +780,6 @@ async function handleSources(req, res) {
     if (req.method === "GET" && url === "/api/sources/analytics/threshold") {
       const analytics = require("./rag/analytics");
       return sendJson(res, 200, analytics.getStats());
-    }
-    // POST /api/sources/reindex -> embed dokumen yg belum ber-vektor
-    if (req.method === "POST" && url === "/api/sources/reindex") {
-      try {
-        const bodyStr = await readBody(req);
-        let parsed = {};
-        try { parsed = JSON.parse(bodyStr || "{}"); } catch (_) {}
-        const result = await ingest.reindexAll(parsed.workspace);
-        return sendJson(res, 200, { result });
-      } catch (e) {
-        return sendJson(res, 500, { error: String(e.message || e) });
-      }
     }
     // POST /api/sources/search  { query, k, document_ids, workspace }
     if (req.method === "POST" && url === "/api/sources/search") {

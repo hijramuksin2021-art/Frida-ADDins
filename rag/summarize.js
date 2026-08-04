@@ -5,8 +5,8 @@
 const store = require("./store");
 const { callModel, firstToolInput } = require("./llm");
 
-const MAX_CHARS = 4000; // karakter maks teks per sumber yang dikirim ke LLM
-const MAX_CHARS_COMPARE = 2500; // per sumber saat compare (lebih banyak sumber)
+const MAX_CHARS = 150000; // batas muat dokumen utuh ke LLM
+const MAX_CHARS_COMPARE = 75000; // per sumber saat compare (agar total < 150rb)
 
 function truncate(text, max) {
   if (!text) return "";
@@ -53,7 +53,7 @@ async function summarize_source(input) {
 
   const text = truncate(doc.text || "", MAX_CHARS);
   if (!text.trim()) {
-    return { error: "Teks sumber kosong. Klik 'Indeks ulang sumber' terlebih dahulu." };
+    return { error: "Teks sumber kosong atau tidak bisa dibaca." };
   }
 
   const sentLimit = input.max_sentences ? "Maksimal " + input.max_sentences + " kalimat." : "3–5 kalimat.";
