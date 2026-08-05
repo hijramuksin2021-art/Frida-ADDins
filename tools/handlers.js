@@ -18,25 +18,33 @@
 })(this, function () {
   // ---- Markdown Format Utility ----
   function extractMarkdownFormatting(text) {
-    const segments = []; 
-    let clean = "";
-    let i = 0;
-    while (i < text.length) {
-      const boldMatch = text.slice(i).match(/^\*\*(.+?)\*\*/);
-      const italicMatch = text.slice(i).match(/^[*_](.+?)[*_]/);
-      if (boldMatch) {
-        segments.push({ start: clean.length, end: clean.length + boldMatch[1].length, bold: true });
-        clean += boldMatch[1];
-        i += boldMatch[0].length;
-      } else if (italicMatch) {
-        segments.push({ start: clean.length, end: clean.length + italicMatch[1].length, italic: true });
-        clean += italicMatch[1];
-        i += italicMatch[0].length;
-      } else {
-        clean += text[i];
-        i += 1;
-      }
+    const segments = [];
+    if (!text) return { clean: "", segments };
+    
+    // Defense in depth: hindari OOM atau freeze jika teks tidak normal sangat panjang
+    if (text.length > 50000) {
+      console.warn("extractMarkdownFormatting: Teks sangat panjang (>50k karakter), memotong pemrosesan markdown untuk keamanan.");
+      return { clean: text, segments: [] }; // Kembalikan teks mentah tanpa formatting untuk teks super panjang
     }
+
+    const pattern = /\*\*(.+?)\*\*|[*_](.+?)[*_]/g;
+    let clean = "";
+    let lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      clean += text.slice(lastIndex, match.index);
+      const isBold = match[1] !== undefined;
+      const content = isBold ? match[1] : match[2];
+      segments.push({
+        start: clean.length,
+        end: clean.length + content.length,
+        bold: isBold,
+        italic: !isBold,
+      });
+      clean += content;
+      lastIndex = match.index + match[0].length;
+    }
+    clean += text.slice(lastIndex);
     return { clean, segments };
   }
 
